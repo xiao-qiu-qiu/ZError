@@ -8,6 +8,16 @@ const signal = () => new AbortController().signal
 const fixtureFetch = (async () => Response.json({ results: [{ url: 'https://example.org/fact', title: 'Fixture', content: 'Evidence 42' }] })) as typeof fetch
 
 describe('tool loop and protocol replay', () => {
+  test('every-question mode searches before a model that ignores tool choice', async () => {
+    const session = new SearchSession(settings, fixtureFetch)
+    const answer = await runModel({ input: { messages: [{ role: 'user', content: 'Question' }] }, config: {}, signal: signal(), search: session, fetcher: fixtureFetch, searchQuery: 'exact question',
+      process: async input => {
+        expect(input.messages.at(-1).content).toContain('Evidence 42')
+        return { content: '{"answer":"42"}' }
+      } })
+    expect(answer).toBe('{"answer":"42"}')
+    expect(session.trace.searches).toBe(1)
+  })
   for (const stream of [false, true]) test(`executes tools and returns only final answer (stream=${stream})`, async () => {
     let count = 0
     const session = new SearchSession(settings, fixtureFetch)

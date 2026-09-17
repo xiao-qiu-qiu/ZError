@@ -2101,6 +2101,7 @@ const callModelWithStreaming = async (
         input: testInput, config, signal: abortController.signal, process: processModel,
         fetcher: tauriFetch as typeof fetch, search: session,
         nativeSearch: session?.settings.provider === 'native',
+        searchQuery: getRequestAnswerContext(requestId, query).title,
         onContent: text => { if (onChunk) onChunk(text); else updateStreamingResponse(requestId, text) },
         onReasoning: text => { if (onReasoning) onReasoning(text); else updateStreamingReasoning(requestId, text) },
       })
@@ -3952,6 +3953,7 @@ const analyzeUrlQuestion = async (requestId: string) => {
         const responseText = await runModel({
           input: { ...analysisInput, messages: [...analysisInput.messages] }, config,
           signal: abortController.signal, fetcher: tauriFetch, search: session, nativeSearch,
+          searchQuery: title.replace(/https?:\/\/\S+/g, '').trim(),
           process: (input, cfg, fetcher, signal) => executeVisionModelWithAutoUpscale(processModel, input, cfg, fetcher, signal),
           onContent: text => { const log = requestLogs.value.find(l => l.id === requestId); if (log?.urlQuestion) log.urlQuestion.streamingResponse = text },
           onReasoning: text => { reasoningText = text; const log = requestLogs.value.find(l => l.id === requestId); if (log?.urlQuestion) log.urlQuestion.streamingReasoning = text },

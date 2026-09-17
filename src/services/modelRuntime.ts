@@ -7,6 +7,7 @@ export interface ModelRuntimeOptions {
   search?: SearchSession
   nativeSearch?: boolean
   nativeLockHeld?: boolean
+  searchQuery?: string
   onContent?: (text: string) => void
   onReasoning?: (text: string) => void
 }
@@ -19,6 +20,16 @@ export async function runModel(options: ModelRuntimeOptions): Promise<string> {
   const enabled = search && search.settings.mode !== 'off'
   const consumedSources = new Set<string>()
   if (enabled) {
+    // Enforce the user's "every question" setting even when a compatible
+    // upstream silently ignores tool_choice: required.
+    if (!nativeSearch && search.settings.mode === 'always' && !search.trace.sources.length) {
+      const lastUser = [...input.messages].reverse().find((m: any) => m.role === 'user' && typeof m.content === 'string')
+      const query = (options.searchQuery || lastUser?.content || '').trim().slice(0, 500)
+      if (query) {
+        await search.execute('web_search', JSON.stringify({ query }), signal)
+        if (!search.trace.sources.length) throw new Error('每题检索未获得可用来源，请检查搜索服务')
+      }
+    }
     input.messages.unshift({ role: 'system', content: SEARCH_INSTRUCTIONS + ` 本题最多搜索 ${search.settings.maxSearches} 次、读取 ${search.settings.maxPages} 页，请在预算内完成。` })
     input.tools = nativeSearch ? [{ type: 'web_search' }] : searchTools
     input.max_tool_calls = search.settings.maxSearches + search.settings.maxPages
