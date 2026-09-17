@@ -121,6 +121,8 @@ pub struct QueryData {
     pub answer: String,
     pub is_ai: bool,
     pub is_pending_correction: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_evidence: Option<serde_json::Value>,
 }
 
 /// 请求日志结构体

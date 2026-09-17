@@ -83,7 +83,7 @@ const buildCommonHelpers = () => `
     return '';
   };
 
-  const normalizeBaseUrl = (baseUrl) => String(baseUrl || '').replace(/\\/+$/, '');
+  const normalizeBaseUrl = (baseUrl) => String(baseUrl || '').replace(/\\/+$/, '').replace(/\\/v1$/, '');
 
   // Chat：关 → enable_thinking / thinking.type；开 → reasoning_effort
   // Responses：关 → reasoning.effort none|minimal；开 → reasoning.effort
@@ -172,7 +172,7 @@ const buildCommonHelpers = () => `
     let buffer = '';
 
     const flush = async function* (chunkText) {
-      const blocks = chunkText.split(/\\n\\n+/);
+      const blocks = chunkText.split(/\\r?\\n\\r?\\n/);
       buffer = blocks.pop() || '';
 
       for (const block of blocks) {
@@ -196,7 +196,7 @@ const buildCommonHelpers = () => `
       }
     };
 
-    while (true) {
+    try { while (true) {
       const { value, done } = await reader.read();
       buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
       yield* flush(buffer);
@@ -207,6 +207,9 @@ const buildCommonHelpers = () => `
         }
         break;
       }
+    } } finally {
+      await reader.cancel().catch(() => {});
+      reader.releaseLock();
     }
   };
 
@@ -224,6 +227,7 @@ const buildCommonHelpers = () => `
   };
 
   const mapResponseTool = (tool) => {
+    if (tool && (tool.type === 'web_search' || tool.type === 'web_search_preview')) return tool;
     if (!tool || tool.type !== 'function' || !tool.function) return null;
     return {
       type: 'function',
@@ -301,10 +305,15 @@ const buildCommonHelpers = () => `
   };
 
   const buildResponsesInput = (messages) => {
-    return (messages || []).map((message) => ({
-      role: message.role === 'system' ? 'system' : message.role,
-      content: mapResponsesContent(message.content)
-    }));
+    return (messages || []).flatMap((message) => {
+      if (message.role === 'tool') return [{ type: 'function_call_output', call_id: message.tool_call_id, output: message.content }];
+      if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length) {
+        if (message.response_items && message.response_items.length) return message.response_items;
+        return message.tool_calls.map(t => ({ type: 'function_call', call_id: t.id, name: t.function.name, arguments: t.function.arguments }));
+      }
+      const content = mapResponsesContent(message.content).map(p => message.role === 'assistant' && p.type === 'input_text' ? { ...p, type: 'output_text' } : p);
+      return [{ role: message.role, content }];
+    });
   };
 
   const extractResponsesText = (payload) => {
@@ -355,6 +364,9 @@ const buildCommonHelpers = () => `
 
     return {
       ...payload,
+      history_items: outputs,
+      search_items: outputs.filter(i => i.type === 'web_search_call'),
+      annotations: outputs.flatMap(i => (i.content || []).flatMap(p => p.annotations || [])),
       content,
       reasoning_content: reasoning,
       ...(toolCalls.length ? { tool_calls: toolCalls } : {})
@@ -403,10 +415,15 @@ const buildCommonHelpers = () => `
         continue;
       }
 
-      normalizedMessages.push({
-        role: message.role === 'assistant' ? 'assistant' : 'user',
-        content: mapAnthropicContent(message.content)
-      });
+      if (message.role === 'tool') {
+        normalizedMessages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: message.tool_call_id, content: message.content }] });
+      } else if (message.tool_calls && message.tool_calls.length) {
+        const content = message.content ? [{ type: 'text', text: message.content }] : [];
+        for (const tc of message.tool_calls) content.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input: JSON.parse(tc.function.arguments || '{}') });
+        normalizedMessages.push({ role: 'assistant', content });
+      } else {
+        normalizedMessages.push({ role: message.role === 'assistant' ? 'assistant' : 'user', content: mapAnthropicContent(message.content) });
+      }
     }
 
     return {
@@ -463,12 +480,13 @@ ${injectTemplateHelpers(modelId, thinking)}
   const runtimeModelId = getRuntimeModelId();
   const payload = {
     model: runtimeModelId,
-    messages: input.messages || [],
+    messages: (input.messages || []).map(({ response_items, ...message }) => message),
     stream: input.stream !== false
   };
 
   if (input.tools && input.tools.length) {
     payload.tools = input.tools;
+    if (input.tool_choice) payload.tool_choice = input.tool_choice;
   }
   if (typeof config.temperature === 'number') payload.temperature = config.temperature;
   if (typeof config.topP === 'number') payload.top_p = config.topP;
@@ -487,6 +505,7 @@ ${injectTemplateHelpers(modelId, thinking)}
   if (payload.stream && response.body) {
     return (async function* () {
       for await (const event of readSSEPayloads(response)) {
+        if (event.error || event.type === 'error' || event.type === 'response.failed' || event.type === 'response.incomplete') throw new Error(event.error?.message || event.response?.error?.message || '模型响应未完整完成');
         const chunk = normalizeOpenAIChunk(event);
         if (chunk) yield chunk;
       }
@@ -510,6 +529,8 @@ ${injectTemplateHelpers(modelId, thinking)}
 
   if (input.tools && input.tools.length) {
     payload.tools = input.tools.map(mapResponseTool).filter(Boolean);
+    if (input.tool_choice) payload.tool_choice = input.tool_choice;
+    if (input.include) payload.include = input.include;
   }
   applyOpenAIThinkingPayload(payload, 'responses');
 
@@ -527,7 +548,17 @@ ${injectTemplateHelpers(modelId, thinking)}
       const toolCallState = new Map();
 
       for await (const event of readSSEPayloads(response)) {
+        if (event.error || event.type === 'error' || event.type === 'response.failed' || event.type === 'response.incomplete') throw new Error(event.error?.message || event.response?.error?.message || '模型响应未完整完成');
         const eventType = event && event.type ? event.type : '';
+        if (eventType === 'response.output_item.done' && event.item) {
+          const item = event.item;
+          yield { history_items: [item], search_items: item.type === 'web_search_call' ? [item] : [], annotations: (item.content || []).flatMap(p => p.annotations || []) };
+        }
+        if (eventType === 'response.output_text.annotation.added') yield { annotations: [event.annotation] };
+        if (eventType === 'response.completed' && event.response) {
+          const items = event.response.output || [];
+          yield { search_items: items.filter(i => i.type === 'web_search_call'), annotations: items.flatMap(i => (i.content || []).flatMap(p => p.annotations || [])) };
+        }
 
         if (eventType === 'response.output_text.delta' && typeof event.delta === 'string') {
           yield { ...event, content: event.delta };
@@ -610,6 +641,7 @@ ${injectTemplateHelpers(modelId, thinking)}
 
   if (input.tools && input.tools.length) {
     payload.tools = input.tools.map(mapAnthropicTool).filter(Boolean);
+    if (input.tool_choice) payload.tool_choice = { type: input.tool_choice === 'required' ? 'any' : input.tool_choice };
   }
   if (ENABLE_THINKING) {
     const effort = (THINKING && THINKING.effort) || 'medium';
@@ -634,6 +666,7 @@ ${injectTemplateHelpers(modelId, thinking)}
       const blockState = new Map();
 
       for await (const event of readSSEPayloads(response)) {
+        if (event.error || event.type === 'error' || event.type === 'response.failed' || event.type === 'response.incomplete') throw new Error(event.error?.message || event.response?.error?.message || '模型响应未完整完成');
         if (event.type === 'content_block_start' && event.content_block) {
           blockState.set(event.index, event.content_block);
 
@@ -645,7 +678,7 @@ ${injectTemplateHelpers(modelId, thinking)}
                   id: event.content_block.id || 'tool_use',
                   function: {
                     name: event.content_block.name || '',
-                    arguments: event.content_block.input ? JSON.stringify(event.content_block.input) : ''
+                    arguments: event.content_block.input && Object.keys(event.content_block.input).length ? JSON.stringify(event.content_block.input) : ''
                   }
                 }
               ]

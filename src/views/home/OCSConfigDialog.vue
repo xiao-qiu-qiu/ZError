@@ -33,6 +33,7 @@
           </svg>
           <span>当前端口号: <strong>{{ currentPort || '未设置' }}</strong></span>
         </div>
+        <p class="ocs-timeout-note">联网答题默认最多等待 120 秒。请在 OCS「通用 → 全局设置 → 高级设置 → 搜题最大耗时」设置为 150 秒；这里的题库 JSON 不控制 OCS 的等待时间。</p>
       </div>
     </div>
   </div>
@@ -210,6 +211,7 @@ const handleTest = async () => {
 </style>
 
 <style scoped>
+.ocs-timeout-note { font-size: 13px; line-height: 1.65; color: var(--text-secondary, #888); padding: 0 4px; }
 .ocs-config-panel {
   max-width: 680px;
   display: flex;

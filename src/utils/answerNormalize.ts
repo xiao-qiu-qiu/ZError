@@ -1,20 +1,7 @@
-/** 从选项文本解析 A/B/C → 选项正文 */
-export const parseOptionLetterMap = (options: string | undefined | null): Map<string, string> => {
-  const map = new Map<string, string>()
-  if (!options?.trim()) return map
-  for (const raw of options.replace(/\r\n/g, '\n').split('\n')) {
-    const line = raw.trim()
-    if (!line) continue
-    const m = line.match(/^([A-Za-z])([\.、．\)])\s*(.+)$/)
-    if (!m?.[1] || !m[3]?.trim()) continue
-    const sep = m[2]
-    const rest = m[3].trim()
-    // 避免把正文「C、H、O、N…」误当成选项标号行
-    if (sep === '、' && /^[A-Za-z]、/.test(rest)) continue
-    map.set(m[1].toUpperCase(), rest)
-  }
-  return map
-}
+import { parseOptions } from './answerDecision'
+
+/** Shared option parsing for legacy displays and current answer validation. */
+export const parseOptionLetterMap = (options?: string | null): Map<string, string> => parseOptions(options || '')
 
 /**
  * 去掉行首选项字母前缀：`B. 传动角` → `传动角`；纯字母保留给后续映射。

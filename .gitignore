@@ -44,6 +44,8 @@ target/
 
 # local build / eval artifacts
 tmp/
+.playwright-cli/
+output/playwright/
 **/.zerror-updater-tmp/
 
 # Tauri updater private signing key (never commit)

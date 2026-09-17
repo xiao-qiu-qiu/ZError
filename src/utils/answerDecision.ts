@@ -1,13 +1,14 @@
 /** The sole answer contract used for validation, comparison and arbitration. */
 export interface AnswerContext { title: string; options?: string; type?: string }
 export interface AnswerDecision { answer: string; key: string; needs_review: boolean; reason?: string }
-export type AnswerKind = 'single' | 'multiple' | 'judgement' | 'completion' | 'general'
+export type AnswerKind = 'single' | 'multiple' | 'choice' | 'judgement' | 'completion' | 'general'
 
 export function answerKind(type = ''): AnswerKind {
   if (/multiple|多选|多项选择/i.test(type)) return 'multiple'
   if (/single|单选|单项选择/i.test(type)) return 'single'
   if (/judg(e)?ment|判断/i.test(type)) return 'judgement'
   if (/completion|填空/i.test(type)) return 'completion'
+  if (/choice|选择/i.test(type)) return 'choice'
   return 'general'
 }
 
@@ -65,9 +66,9 @@ export function validateAnswer(content: string, context: AnswerContext): AnswerD
   const kind = answerKind(context.type)
   let parts = answer.split('###').map(p => p.trim())
   if (parts.some(p => !p)) return reviewDecision('答案含有空项')
-  if (kind === 'single' || kind === 'multiple') {
+  if (kind === 'single' || kind === 'multiple' || kind === 'choice') {
     const options = parseOptions(context.options)
-    if (!options.size) return reviewDecision('选择题缺少完整选项')
+    if (options.size < 2) return reviewDecision('选择题缺少完整选项')
     const values = [...options.values()]
     parts = parts.flatMap(p => {
       if (values.includes(p)) return [p]
@@ -89,7 +90,7 @@ export function validateAnswer(content: string, context: AnswerContext): AnswerD
     else if (no.includes(answer.toLowerCase())) answer = '错误'
     else return reviewDecision('判断题需要明确的正确或错误')
   } else if (kind === 'completion') {
-    const blanks = context.title.match(/_{2,}|（\s*）|\(\s*\)/g)?.length ?? 0
+    const blanks = context.title.match(/（\s*[_＿]{2,}\s*）|\(\s*[_＿]{2,}\s*\)|[_＿]{2,}|（\s*）|\(\s*\)/g)?.length ?? 0
     if (blanks > 0 && blanks !== parts.length) return reviewDecision('填空答案数量与题目不符')
     answer = parts.join('###')
   }
