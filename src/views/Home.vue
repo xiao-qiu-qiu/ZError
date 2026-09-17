@@ -2752,8 +2752,6 @@ const applyLocalRequestCompletion = (
     log.status = status
     log.stage = 'completed'
     log.responseTime = log.responseTime ?? Math.max(Date.now() - log.timestamp, 0)
-  } else if (log.status !== status) {
-    log.status = status
   }
   if (responseBody && !log.responseBody) {
     log.responseBody = responseBody
@@ -2776,6 +2774,8 @@ const sendModelResponseToBackend = async (requestId: string, content: string, is
   }
 
   let normalizedContent = content
+  let needsReview = false
+  try { needsReview = JSON.parse(content)?.needs_review === true } catch { /* backend validates malformed output */ }
   const evidence = searchSessions.get(requestId)?.trace
   if (isSuccess && evidence) {
     try { const parsed = JSON.parse(content); if (typeof parsed.answer === 'string') normalizedContent = JSON.stringify({ ...parsed, _search: evidence }) } catch { /* backend validates the original response */ }
@@ -2810,13 +2810,13 @@ const sendModelResponseToBackend = async (requestId: string, content: string, is
     }
 
     // 请求端可能已断开导致后端来不及推 completed；本地先收口状态，避免一直「处理中」
-    const provisionalStatus = isSuccess
+    const provisionalStatus = needsReview ? 422 : isSuccess
       ? 200
       : (isTimeoutLikeModelFailureText(normalizedContent) ? 408 : 500)
     applyLocalRequestCompletion(
       requestId,
       provisionalStatus,
-      JSON.stringify({ code: isSuccess ? 1 : 0, message: normalizedContent })
+      JSON.stringify({ code: isSuccess && !needsReview ? 1 : 0, message: normalizedContent })
     )
 
     console.log('模型响应已发送到后端:', { requestId, content: normalizedContent, reasoningContent, isSuccess })
@@ -2836,7 +2836,7 @@ const sendModelResponseToBackend = async (requestId: string, content: string, is
     // 即便上报失败，UI 也不应一直停在处理中
     applyLocalRequestCompletion(
       requestId,
-      isSuccess ? 200 : (isTimeoutLikeModelFailureText(normalizedContent) ? 408 : 500),
+      needsReview ? 422 : isSuccess ? 200 : (isTimeoutLikeModelFailureText(normalizedContent) ? 408 : 500),
       normalizedContent
     )
   }
