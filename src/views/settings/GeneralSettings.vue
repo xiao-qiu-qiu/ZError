@@ -81,7 +81,7 @@
 
       <div class="setting-info">
         <h3 class="setting-title">模型最长响应时间</h3>
-        <p class="setting-description">AI 模型单次请求超时（秒）。超时后中止该次调用并可按「失败自动重试次数」重试；整题最长等待 ≈ 本值 × (1+重试) + 缓冲。默认 40 秒。</p>
+        <p class="setting-description">关闭联网时，模型单次请求的最长等待时间，默认 40 秒。开启联网后，由下方的整题答题预算统一控制。</p>
       </div>
       <div class="setting-control timeout-control">
         <input
@@ -115,6 +115,8 @@
       </div>
     </div>
     </div>
+
+    <SearchSettings />
 
     <div class="network-group">
       <div class="group-title">网络设置</div>
@@ -193,6 +195,7 @@ import { useSettingsManager } from '../../composables/useSettingsManager'
 import { useTheme } from '../../composables/useTheme'
 import { environmentDetector } from '../../services/environmentDetector'
 import ThemeSwitch from './GeneralSettings/ThemeSwitch.vue'
+import SearchSettings from './GeneralSettings/SearchSettings.vue'
 import Toggle from '../../components/Toggle.vue'
 import FolderPickerDialog from '../../components/FolderPickerDialog.vue'
 

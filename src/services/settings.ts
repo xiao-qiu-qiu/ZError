@@ -15,6 +15,9 @@ export interface AppSettings {
   // 模型失败自动重试次数（仅单模型 / 总结模型 / 视觉模型）；0 表示不重试
   modelRetryCount: number
 
+  // 联网搜索设置
+  search: SearchSettings
+
   
   // 题目显示设置
   defaultDifficulty: 'easy' | 'medium' | 'hard'
@@ -64,6 +67,81 @@ export interface AlgorithmConfig {
   code: string
 }
 
+export type SearchMode = 'off' | 'auto' | 'always'
+export type SearchProvider = 'native' | 'bing' | 'tavily' | 'searxng'
+
+export interface SearchSettings {
+  mode: SearchMode
+  provider: SearchProvider
+  apiKey: string
+  baseUrl: string
+  maxSearches: number
+  maxPages: number
+  timeoutSeconds: number
+  requestTimeoutSeconds: number
+  cacheTtlMinutes: number
+}
+
+const DEFAULT_SEARCH_SETTINGS: SearchSettings = {
+  mode: 'auto',
+  provider: 'bing',
+  apiKey: '',
+  baseUrl: '',
+  maxSearches: 2,
+  maxPages: 3,
+  timeoutSeconds: 120,
+  requestTimeoutSeconds: 20,
+  cacheTtlMinutes: 30
+}
+
+type SettingsRecord = Record<string, unknown>
+
+const isSettingsRecord = (value: unknown): value is SettingsRecord => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+)
+
+const withoutUndefined = (value: SettingsRecord): SettingsRecord => {
+  const result: SettingsRecord = {}
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry !== undefined) result[key] = entry
+  }
+  return result
+}
+
+const mergeDefined = <T extends SettingsRecord>(base: T, value: unknown): T => ({
+  ...base,
+  ...(isSettingsRecord(value) ? withoutUndefined(value) : {})
+}) as T
+
+const normalizeInteger = (value: unknown, fallback: number, min: number, max: number): number => {
+  const numericValue = typeof value === 'number'
+    ? value
+    : typeof value === 'string' && value.trim() !== ''
+      ? Number(value)
+      : Number.NaN
+
+  if (!Number.isFinite(numericValue)) return fallback
+  return Math.round(Math.min(max, Math.max(min, numericValue)))
+}
+
+const normalizeSearchSettings = (value: unknown, fallback: SearchSettings = DEFAULT_SEARCH_SETTINGS): SearchSettings => {
+  const source = isSettingsRecord(value) ? value : {}
+  const mode = source.mode
+  const provider = source.provider
+
+  return {
+    mode: mode === 'off' || mode === 'auto' || mode === 'always' ? mode : fallback.mode,
+    provider: provider === 'native' || provider === 'bing' || provider === 'tavily' || provider === 'searxng' ? provider : fallback.provider,
+    apiKey: typeof source.apiKey === 'string' ? source.apiKey : fallback.apiKey,
+    baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl : fallback.baseUrl,
+    maxSearches: normalizeInteger(source.maxSearches, fallback.maxSearches, 1, 5),
+    maxPages: normalizeInteger(source.maxPages, fallback.maxPages, 1, 8),
+    timeoutSeconds: normalizeInteger(source.timeoutSeconds, fallback.timeoutSeconds, 30, 600),
+    requestTimeoutSeconds: normalizeInteger(source.requestTimeoutSeconds, fallback.requestTimeoutSeconds, 5, 60),
+    cacheTtlMinutes: normalizeInteger(source.cacheTtlMinutes, fallback.cacheTtlMinutes, 0, 1440)
+  }
+}
+
 // 默认设置
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
@@ -72,6 +150,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoAddToQuestionBank: true,
   modelResponseTimeout: 40,
   modelRetryCount: 2,
+  search: DEFAULT_SEARCH_SETTINGS,
 
   defaultDifficulty: 'medium',
   itemsPerPage: 20,
@@ -129,14 +208,14 @@ class SettingsManager {
       if (stored) {
         const parsedSettings = { ...(JSON.parse(stored) || {}) }
         delete parsedSettings.enableNonThinkingModelAnalysis
-        return { ...DEFAULT_SETTINGS, ...parsedSettings, network: { ...DEFAULT_SETTINGS.network, ...(parsedSettings.network || {}) } }
+        return this.mergeSettings(parsedSettings)
       }
 
 
     } catch (error) {
       console.warn('加载设置失败，使用默认设置:', error)
     }
-    return { ...DEFAULT_SETTINGS }
+    return this.mergeSettings({})
   }
 
   /**
@@ -150,7 +229,7 @@ class SettingsManager {
       if (content) {
         const parsed = { ...(JSON.parse(content) || {}) }
         delete parsed.enableNonThinkingModelAnalysis
-        Object.assign(this.settings, { ...DEFAULT_SETTINGS, ...parsed, network: { ...DEFAULT_SETTINGS.network, ...(parsed.network || {}) } })
+        Object.assign(this.settings, this.mergeSettings(parsed))
         console.log('已从配置文件加载设置')
       }
 
@@ -225,6 +304,10 @@ class SettingsManager {
    * 设置特定设置项
    */
   set<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void {
+    if (key === 'search') {
+      this.settings.search = normalizeSearchSettings(value, this.settings.search)
+      return
+    }
     this.settings[key] = value
   }
 
@@ -232,7 +315,7 @@ class SettingsManager {
    * 批量更新设置
    */
   update(newSettings: Partial<AppSettings>): void {
-    Object.assign(this.settings, newSettings)
+    Object.assign(this.settings, this.mergeSettings(newSettings, this.settings))
   }
 
   /**
@@ -253,14 +336,14 @@ class SettingsManager {
    * 重置设置为默认值
    */
   reset(): void {
-    Object.assign(this.settings, DEFAULT_SETTINGS)
+    Object.assign(this.settings, this.mergeSettings({}))
   }
 
   /**
    * 重置特定设置项
    */
   resetKey<K extends keyof AppSettings>(key: K): void {
-    this.settings[key] = DEFAULT_SETTINGS[key]
+    this.settings[key] = this.mergeSettings({})[key]
   }
 
   /**
@@ -332,6 +415,24 @@ class SettingsManager {
   }
 
   /**
+   * 合并设置并规范化新增的搜索配置。
+   * `base` 用于批量更新时保留未传入的当前值；读取持久化配置时使用默认值。
+   */
+  private mergeSettings(value: unknown, base: AppSettings = DEFAULT_SETTINGS): AppSettings {
+    const source = isSettingsRecord(value) ? withoutUndefined(value) : {}
+
+    return {
+      ...base,
+      ...source,
+      network: mergeDefined(base.network, source.network),
+      windowSize: mergeDefined(base.windowSize, source.windowSize),
+      windowPosition: mergeDefined(base.windowPosition, source.windowPosition),
+      multiUser: mergeDefined(base.multiUser, source.multiUser),
+      search: normalizeSearchSettings(source.search, base.search)
+    }
+  }
+
+  /**
    * 获取设置的描述信息
    */
   getSettingsInfo(): Record<keyof AppSettings, string> {
@@ -342,6 +443,7 @@ class SettingsManager {
       autoAddToQuestionBank: '自动将AI返回的题目添加到本地题库',
       modelResponseTimeout: '文本模型最长响应时间（秒）',
       modelRetryCount: '模型失败自动重试次数',
+      search: '联网搜索设置',
 
       network: '网络配置设置',
       windowSize: '窗口大小',

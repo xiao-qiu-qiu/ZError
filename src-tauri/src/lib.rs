@@ -3,6 +3,7 @@
 
 // 模块声明
 pub mod app_activity;
+mod answer_validation;
 pub mod commands;
 pub mod database;
 pub mod logger;
