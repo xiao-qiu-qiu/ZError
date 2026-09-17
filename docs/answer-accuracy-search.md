@@ -67,3 +67,16 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 关键回归覆盖答案格式、多选顺序、缓存待修正、选项重排、协议工具回传、流式参数、搜索证据和取消行为。真实接口探针存放于本地忽略目录 `tmp/`。
 
 日常使用前建议由用户在实际 OCS 课程内跑少量已知答案题，观察待复核率、耗时与真实答题结果。第三阶段的大样本准确率和成本对比不属于本次交付。
+
+## Windows 手动安装包
+
+fork 的 Windows x64 安装包使用 NSIS，构建命令：
+
+```powershell
+npm ci
+npm run tauri -- build --ci --bundles nsis --config src-tauri/tauri.release-manual.conf.json
+```
+
+此配置仅关闭上游自动更新签名产物的生成，不需要上游私钥。安装包发布在本 fork 的 GitHub Releases，用户下载后退出 ZError（包括系统托盘），沿用原目录覆盖安装。安装包没有 Windows Authenticode 签名；Release 同时提供 SHA-256 校验文件。
+
+应用内更新检查仍使用上游地址，本 fork 的安装包应从 GitHub Release 下载。安装前建议备份原安装目录中的配置和题库数据；不要先卸载并清除数据。
