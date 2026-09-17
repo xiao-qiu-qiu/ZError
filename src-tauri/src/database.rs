@@ -1362,6 +1362,7 @@ pub struct QuestionMatch {
     pub question: String,
     pub options: Option<String>,
     pub answer: String,
+    pub question_type: Option<String>,
     pub is_ai: bool,
     pub is_pending_correction: bool,
     pub score: f64,
@@ -1375,9 +1376,14 @@ fn score_question_row(
     question: String,
     db_options: Option<String>,
     answer: String,
+    question_type: Option<String>,
     is_ai: bool,
     is_pending_correction: bool,
 ) -> Option<QuestionMatch> {
+    if is_pending_correction {
+        return None;
+    }
+
     let query_urls = extract_urls(title);
     if !query_urls.is_empty() {
         let db_urls = extract_urls(&question);
@@ -1417,6 +1423,7 @@ fn score_question_row(
         question,
         options: db_options,
         answer,
+        question_type,
         is_ai,
         is_pending_correction,
         score: final_similarity,
@@ -1457,7 +1464,9 @@ fn scan_question_matches(
 
     let conn = Connection::open(&db_path)?;
     let mut stmt = conn.prepare(
-        "SELECT Id, Question, Options, Answer, IsAi, COALESCE(IsPendingCorrection, 0) FROM AIResponses",
+        "SELECT Id, Question, Options, Answer, QuestionType, IsAi, COALESCE(IsPendingCorrection, 0)
+         FROM AIResponses
+         WHERE COALESCE(IsPendingCorrection, 0) = 0",
     )?;
 
     let rows = stmt.query_map([], |row| {
@@ -1466,14 +1475,23 @@ fn scan_question_matches(
             row.get::<_, String>(1)?,
             row.get::<_, Option<String>>(2)?,
             row.get::<_, String>(3)?,
-            row.get::<_, bool>(4)?,
+            row.get::<_, Option<String>>(4)?,
             row.get::<_, bool>(5)?,
+            row.get::<_, bool>(6)?,
         ))
     })?;
 
     let mut results = Vec::new();
     for row in rows {
-        let (id, question, db_options, answer, is_ai, is_pending_correction) = row?;
+        let (
+            id,
+            question,
+            db_options,
+            answer,
+            question_type,
+            is_ai,
+            is_pending_correction,
+        ) = row?;
         if let Some(matched) = score_question_row(
             &title_clone,
             &query_options,
@@ -1482,6 +1500,7 @@ fn scan_question_matches(
             question,
             db_options,
             answer,
+            question_type,
             is_ai,
             is_pending_correction,
         ) {
@@ -1569,7 +1588,9 @@ pub fn get_ai_response_by_id(
         Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))
     })?;
     let row = conn.query_row(
-        "SELECT Id, Question, Options, Answer, IsAi, COALESCE(IsPendingCorrection, 0) FROM AIResponses WHERE Id = ?",
+        "SELECT Id, Question, Options, Answer, QuestionType, IsAi, COALESCE(IsPendingCorrection, 0)
+         FROM AIResponses
+         WHERE Id = ? AND COALESCE(IsPendingCorrection, 0) = 0",
         [id],
         |row| {
             Ok(QuestionMatch {
@@ -1577,8 +1598,9 @@ pub fn get_ai_response_by_id(
                 question: row.get(1)?,
                 options: row.get(2)?,
                 answer: row.get(3)?,
-                is_ai: row.get(4)?,
-                is_pending_correction: row.get(5)?,
+                question_type: row.get(4)?,
+                is_ai: row.get(5)?,
+                is_pending_correction: row.get(6)?,
                 score: 1.0,
             })
         },
@@ -1854,7 +1876,7 @@ pub fn init_database_schema(db_path: &str) -> Result<(), String> {
 mod tests {
     use super::{
         compute_query_match_score, get_table_columns, init_database_schema, is_exact_match_score,
-        is_exact_question_match, QuestionMatch,
+        is_exact_question_match, score_question_row, QuestionMatch,
     };
     use rusqlite::Connection;
     use uuid::Uuid;
@@ -1890,6 +1912,7 @@ mod tests {
             question: "下列哪项正确".to_string(),
             options: Some("A.1\nB.2".to_string()),
             answer: "A.1".to_string(),
+            question_type: Some("单选".to_string()),
             is_ai: true,
             is_pending_correction: false,
             score: 1.0,
@@ -1905,6 +1928,23 @@ mod tests {
             &matched
         ));
         assert!(is_exact_question_match("下列哪项正确", None, &matched));
+    }
+
+    #[test]
+    fn pending_correction_rows_are_not_scored() {
+        assert!(score_question_row(
+            "题目",
+            &None,
+            false,
+            1,
+            "题目".to_string(),
+            None,
+            "答案".to_string(),
+            None,
+            true,
+            true,
+        )
+        .is_none());
     }
 
     #[test]

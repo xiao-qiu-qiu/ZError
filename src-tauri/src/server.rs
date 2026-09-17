@@ -1,4 +1,5 @@
 use crate::app_activity::{begin_server_activity, end_server_activity};
+use crate::answer_validation::{parse_model_answer, validate_and_normalize_answer};
 use crate::database::{
     get_ai_response_by_id, insert_ai_response, query_database_candidates, query_database_exact,
     set_question_pending_correction, QuestionMatch,
@@ -14,7 +15,7 @@ use std::collections::HashMap;
 use tauri::{AppHandle, Emitter, State};
 use tokio_stream::wrappers::BroadcastStream;
 use uuid;
-use warp::http::HeaderMap;
+use warp::http::{HeaderMap, StatusCode};
 use warp::Filter;
 
 const QUERY_TEST_PAGE_HTML: &str = include_str!("query_test_page.html");
@@ -260,7 +261,7 @@ fn build_model_query_prompt(
 
     q.push_str("1. 先在内部完成审题与推理（可简要），再给出最终答案。\n");
     q.push_str("2. 最后一行输出**唯一**一个 JSON 对象，不要用 markdown 代码块包裹，JSON 前后不要附加说明。\n");
-    q.push_str("3. JSON 格式严格为：{\"answer\": \"最终答案\"}\n");
+    q.push_str("3. JSON 格式严格为：{\"answer\": \"最终答案\"}；仅当确实无法确定时可增加 \"needs_review\": true。\n");
     q.push_str("4. answer 只写答案正文本身：选择题必须与【选项】中去掉「A.」「B.」后的文字完全一致；判断题只写「正确」或「错误」；填空题只写填空内容。\n");
     q.push_str("5. 严禁把选项字母写进 answer：不要写 A/B/C/D，不要写「B. 传动角」「D. meeting」，应直接写「传动角」「meeting」。不要把分析过程写进 answer。\n\n");
 
@@ -288,6 +289,7 @@ fn build_model_query_prompt(
 
 const SAME_QUESTION_CHECK_PREFIX: &str = "__SAME_QUESTION_CHECK__:";
 const SAME_QUESTION_CANDIDATE_LIMIT: usize = 5;
+const SAME_QUESTION_CANDIDATE_SCAN_LIMIT: usize = 20;
 
 fn build_same_question_check_prompt(title: &str, options: Option<&str>, candidates: &[QuestionMatch]) -> String {
     let candidate_list: Vec<serde_json::Value> = candidates
@@ -361,6 +363,40 @@ fn build_normal_model_query(request: &QueryRequest, has_url: bool) -> String {
     }
 }
 
+fn answer_review_error(reason: impl AsRef<str>) -> (u16, QueryResponse) {
+    (
+        422,
+        QueryResponse::error(format!("答案待复核：{}", reason.as_ref())),
+    )
+}
+
+fn query_http_reply(
+    status: u16,
+    response: &QueryResponse,
+) -> warp::reply::WithStatus<warp::reply::Json> {
+    let status = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    warp::reply::with_status(warp::reply::json(response), status)
+}
+
+fn validate_cached_answer(request: &QueryRequest, matched: &QuestionMatch) -> Result<String, String> {
+    let options = request
+        .options
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .or(matched.options.as_deref());
+    let question_type = request
+        .query_type
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .or(matched.question_type.as_deref());
+    validate_and_normalize_answer(
+        &matched.answer,
+        &request.title,
+        options,
+        question_type,
+    )
+}
+
 fn emit_model_call_request(app: Option<&AppHandle>, request_id: &str, query: &str) {
     if let Some(app) = app {
         let payload = serde_json::json!({
@@ -403,29 +439,32 @@ async fn wait_and_store_ai_answer(
                 return (status, QueryResponse::error(err_msg));
             }
 
-            let mut extracted_answer = extract_answer_from_json(&model_content);
-            if model_content.contains("题目不完整,无法确定具体问题.") {
-                extracted_answer = String::new();
-                println!("⚠️ 检测到题目不完整,将答案留空");
-            }
-            extracted_answer = extracted_answer.trim().to_string();
-            // 去掉 A./B. 前缀，纯字母映射为选项正文，避免返回/入库带序号的答案
-            let before_norm = extracted_answer.clone();
-            extracted_answer = normalize_answer_against_options(
-                &extracted_answer,
-                request.options.as_deref(),
-            );
-            if extracted_answer != before_norm {
-                println!(
-                    "🔧 答案已规范化: [{}] → [{}]",
-                    before_norm, extracted_answer
-                );
+            let parsed_answer = match parse_model_answer(&model_content) {
+                Ok(parsed) => parsed,
+                Err(reason) => {
+                    println!("⚠️ 模型答案 JSON 校验失败: {}", reason);
+                    return answer_review_error(reason);
+                }
+            };
+            if parsed_answer.needs_review {
+                println!("⚠️ 模型将答案标记为 needs_review");
+                return answer_review_error("模型标记该答案需要复核");
             }
 
-            let inserted_id = if extracted_answer.is_empty() {
-                println!("⚠️ AI最终处理结果答案为空,跳过保存题目");
-                0
-            } else if !should_auto_add_to_question_bank() {
+            let extracted_answer = match validate_and_normalize_answer(
+                &parsed_answer.answer,
+                &request.title,
+                request.options.as_deref(),
+                request.query_type.as_deref(),
+            ) {
+                Ok(answer) => answer,
+                Err(reason) => {
+                    println!("⚠️ 模型答案内容校验失败: {}", reason);
+                    return answer_review_error(reason);
+                }
+            };
+
+            let inserted_id = if !should_auto_add_to_question_bank() {
                 println!("ℹ️ autoAddToQuestionBank=false，跳过将 AI 回答写入本地题库");
                 0
             } else {
@@ -483,29 +522,33 @@ async fn resolve_query_with_same_question_check(
 
     // 1) 精确命中直接返回
     match query_database_exact(&request.title, request.options.as_deref()).await {
-        Ok(exact_hits) if !exact_hits.is_empty() => {
-            println!("✅ 精确匹配命中: {} 条", exact_hits.len());
+        Ok(exact_hits) => {
+            let hit_count = exact_hits.len();
             let data_list: Vec<QueryData> = exact_hits
                 .into_iter()
-                .map(|m| {
-                    let answer = normalize_answer_against_options(
-                        &m.answer,
-                        request.options.as_deref(),
-                    );
-                    build_query_data(
+                .filter_map(|matched| match validate_cached_answer(request, &matched) {
+                    Ok(answer) => Some(build_query_data(
                         request_origin,
-                        m.id,
-                        &m.question,
+                        matched.id,
+                        &matched.question,
                         answer,
-                        m.is_ai,
-                        m.is_pending_correction,
-                    )
+                        matched.is_ai,
+                        false,
+                    )),
+                    Err(reason) => {
+                        println!(
+                            "⚠️ 跳过无效精确缓存 id={}: {}",
+                            matched.id, reason
+                        );
+                        None
+                    }
                 })
                 .collect();
-            return (200, QueryResponse::success(data_list));
-        }
-        Ok(_) => {
-            println!("🔍 无精确匹配: {}", request.title);
+            if !data_list.is_empty() {
+                println!("✅ 精确匹配有效命中: {}/{} 条", data_list.len(), hit_count);
+                return (200, QueryResponse::success(data_list));
+            }
+            println!("🔍 无有效精确匹配: {}", request.title);
         }
         Err(e) => {
             eprintln!("Database exact query error: {}", e);
@@ -520,7 +563,7 @@ async fn resolve_query_with_same_question_check(
     let candidates = match query_database_candidates(
         &request.title,
         request.options.as_deref(),
-        SAME_QUESTION_CANDIDATE_LIMIT,
+        SAME_QUESTION_CANDIDATE_SCAN_LIMIT,
     )
     .await
     {
@@ -532,7 +575,20 @@ async fn resolve_query_with_same_question_check(
                 QueryResponse::error(format!("Database error: {}", e)),
             );
         }
-    };
+    }
+    .into_iter()
+    .filter_map(|mut matched| match validate_cached_answer(request, &matched) {
+        Ok(answer) => {
+            matched.answer = answer;
+            Some(matched)
+        }
+        Err(reason) => {
+            println!("⚠️ 跳过无效模糊缓存 id={}: {}", matched.id, reason);
+            None
+        }
+    })
+    .take(SAME_QUESTION_CANDIDATE_LIMIT)
+    .collect::<Vec<_>>();
 
     if !candidates.is_empty() {
         println!(
@@ -558,10 +614,7 @@ async fn resolve_query_with_same_question_check(
                 }
                 if let Some(matched_id) = parse_same_question_result(&judge_content) {
                     if let Some(matched) = candidates.iter().find(|c| c.id == matched_id).cloned() {
-                        let answer = normalize_answer_against_options(
-                            &matched.answer,
-                            request.options.as_deref(),
-                        );
+                        let answer = matched.answer.clone();
                         let response_id = if should_auto_add_to_question_bank() {
                             match insert_ai_response(
                                 &request.title,
@@ -603,10 +656,24 @@ async fn resolve_query_with_same_question_check(
 
                     // matched_id 不在候选中，尝试按 id 查库
                     if let Ok(matched) = get_ai_response_by_id(matched_id) {
-                        let answer = normalize_answer_against_options(
-                            &matched.answer,
-                            request.options.as_deref(),
-                        );
+                        let answer = match validate_cached_answer(request, &matched) {
+                            Ok(answer) => answer,
+                            Err(reason) => {
+                                println!(
+                                    "⚠️ 同题判断命中的缓存 id={} 无效: {}，回落正常答题",
+                                    matched_id, reason
+                                );
+                                return wait_and_store_ai_answer(
+                                    logger,
+                                    app,
+                                    request,
+                                    request_id,
+                                    request_origin,
+                                    has_url,
+                                )
+                                .await;
+                            }
+                        };
                         let response_id = if should_auto_add_to_question_bank() {
                             match insert_ai_response(
                                 &request.title,
@@ -834,12 +901,13 @@ pub async fn start_server(
                 });
 
                 match join.await {
-                    Ok(result) => Ok::<_, warp::Rejection>(warp::reply::json(&result.1)),
+                    Ok(result) => Ok::<_, warp::Rejection>(query_http_reply(result.0, &result.1)),
                     Err(e) => {
                         eprintln!("❌ /query POST task join error: {}", e);
-                        Ok(warp::reply::json(&QueryResponse::error(
-                            "Internal query task failed".to_string(),
-                        )))
+                        Ok(query_http_reply(
+                            500,
+                            &QueryResponse::error("Internal query task failed".to_string()),
+                        ))
                     }
                 }
             }
@@ -947,12 +1015,13 @@ pub async fn start_server(
                 });
 
                 match join.await {
-                    Ok(result) => Ok::<_, warp::Rejection>(warp::reply::json(&result.1)),
+                    Ok(result) => Ok::<_, warp::Rejection>(query_http_reply(result.0, &result.1)),
                     Err(e) => {
                         eprintln!("❌ /query GET task join error: {}", e);
-                        Ok(warp::reply::json(&QueryResponse::error(
-                            "Internal query task failed".to_string(),
-                        )))
+                        Ok(query_http_reply(
+                            500,
+                            &QueryResponse::error("Internal query task failed".to_string()),
+                        ))
                     }
                 }
             }
@@ -1380,265 +1449,6 @@ async fn store_ai_response_to_database(request_id: &str, content: &str) -> Resul
     Ok(())
 }
 
-/// 从选项文本解析 A/B/C → 选项正文
-fn parse_option_letter_map(options: Option<&str>) -> HashMap<char, String> {
-    let mut map = HashMap::new();
-    let Some(options) = options.map(str::trim).filter(|s| !s.is_empty()) else {
-        return map;
-    };
-    let Ok(re) = Regex::new(r"^([A-Za-z])([\.、．\)])\s*(.+)$") else {
-        return map;
-    };
-    for raw in options.replace("\r\n", "\n").lines() {
-        let line = raw.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if let Some(caps) = re.captures(line) {
-            let letter = caps
-                .get(1)
-                .and_then(|m| m.as_str().chars().next())
-                .map(|c| c.to_ascii_uppercase());
-            let sep = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-            let text = caps.get(3).map(|m| m.as_str().trim()).unwrap_or("");
-            // 避免把正文「C、H、O、N…」误当成选项标号行
-            if sep == "、"
-                && text
-                    .chars()
-                    .next()
-                    .map(|c| c.is_ascii_alphabetic())
-                    .unwrap_or(false)
-                && text.chars().nth(1) == Some('、')
-            {
-                continue;
-            }
-            if let (Some(letter), true) = (letter, !text.is_empty()) {
-                map.insert(letter, text.to_string());
-            }
-        }
-    }
-    map
-}
-
-/// 去掉行首选项字母前缀：`B. 传动角` → `传动角`
-/// 有选项表时，仅当去前缀后能对应到某选项正文才剥离。
-fn strip_leading_option_label(text: &str, map: &HashMap<char, String>) -> String {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-
-    let patterns: [(&str, bool); 2] = [
-        (r"^([A-Za-z])([\.、．\)])\s+(.+)$", false),
-        (r"^([A-Za-z])([\.、．\)])(.+)$", true),
-    ];
-
-    for (pat, tight) in patterns {
-        let Ok(re) = Regex::new(pat) else {
-            continue;
-        };
-        let Some(caps) = re.captures(trimmed) else {
-            continue;
-        };
-        let Some(letter) = caps
-            .get(1)
-            .and_then(|m| m.as_str().chars().next())
-            .map(|c| c.to_ascii_uppercase())
-        else {
-            continue;
-        };
-        let sep = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-        let rest = caps.get(3).map(|m| m.as_str().trim()).unwrap_or("");
-        if rest.is_empty() {
-            continue;
-        }
-        // 无空格且剩余全是字母：留给纯字母映射
-        if tight && rest.chars().all(|c| c.is_ascii_alphabetic()) && rest.len() <= 8 {
-            continue;
-        }
-        if map.is_empty() {
-            if sep == "、" {
-                continue;
-            }
-            return rest.to_string();
-        }
-        if map.get(&letter).map(|s| s.as_str()) == Some(rest) {
-            return rest.to_string();
-        }
-        if map.values().any(|v| v == rest) {
-            return rest.to_string();
-        }
-    }
-    trimmed.to_string()
-}
-
-/// 将模型/题库答案规范为选项正文（去字母前缀，纯字母映射）
-fn normalize_answer_against_options(answer: &str, options: Option<&str>) -> String {
-    let raw = answer.trim();
-    if raw.is_empty() {
-        return String::new();
-    }
-
-    let map = parse_option_letter_map(options);
-    let parts: Vec<&str> = if raw.contains("###") {
-        raw.split("###").collect()
-    } else {
-        vec![raw]
-    };
-
-    let mut normalized: Vec<String> = Vec::new();
-    for part in parts {
-        let mut p = strip_leading_option_label(part.trim(), &map);
-        if p.is_empty() {
-            continue;
-        }
-
-        let compact: String = p.chars().filter(|c| !c.is_whitespace()).collect();
-        if !map.is_empty()
-            && !compact.is_empty()
-            && compact.chars().all(|c| c.is_ascii_alphabetic())
-            && compact.len() <= 8
-        {
-            let letters: Vec<char> = compact.chars().map(|c| c.to_ascii_uppercase()).collect();
-            let texts: Vec<String> = letters
-                .iter()
-                .filter_map(|ch| map.get(ch).cloned())
-                .collect();
-            if texts.len() == letters.len() && !texts.is_empty() {
-                p = texts.join("###");
-            }
-        }
-        normalized.push(p);
-    }
-
-    if normalized.len() == 1 && normalized[0].contains("###") && !raw.contains("###") {
-        return normalized[0].clone();
-    }
-    normalized.join("###")
-}
-
-/// 从JSON响应中提取answer字段
-///
-/// # Arguments
-/// * `json_content` - AI返回的JSON字符串
-///
-/// # Returns
-/// * `String` - 提取的答案内容,如果解析失败则返回原始内容
-fn extract_answer_from_json(json_content: &str) -> String {
-    // 1) 去除可能的 markdown 代码块标记
-    let mut cleaned = json_content.trim().to_string();
-    if cleaned.starts_with("```json") {
-        cleaned = cleaned[7..].to_string();
-    } else if cleaned.starts_with("```") {
-        cleaned = cleaned[3..].to_string();
-    }
-    if cleaned.ends_with("```") {
-        cleaned = cleaned[..cleaned.len() - 3].to_string();
-    }
-    cleaned = cleaned.trim().to_string();
-
-    println!("🔍 清理后的内容: {}", cleaned);
-
-    // 提取答案的内部工具函数
-    fn extract_field_from_value(v: &Value) -> Option<String> {
-        if let Some(answer) = v.get("answer").and_then(|a| a.as_str()) {
-            return Some(answer.to_string());
-        }
-        if let Some(answer) = v.get("anwser").and_then(|a| a.as_str()) {
-            return Some(answer.to_string());
-        }
-        None
-    }
-
-    // 2) 首先尝试直接解析整个文本为 JSON
-    if let Ok(v) = serde_json::from_str::<Value>(&cleaned) {
-        if let Some(ans) = extract_field_from_value(&v) {
-            println!("✅ 直接解析文本为JSON并提取到答案: {}", ans);
-            return ans;
-        }
-    }
-
-    // 3) 失败则从末尾尝试提取最后一个平衡的 JSON 对象片段
-    fn extract_last_balanced_json(text: &str) -> Option<String> {
-        let bytes = text.as_bytes();
-        let mut end: Option<usize> = None;
-        let mut depth: i32 = 0;
-        let mut i = bytes.len();
-        while i > 0 {
-            i -= 1;
-            let b = bytes[i];
-            if end.is_none() {
-                if b == b'}' {
-                    end = Some(i);
-                    depth = 1;
-                    continue;
-                }
-            } else {
-                if b == b'}' {
-                    depth += 1;
-                } else if b == b'{' {
-                    depth -= 1;
-                    if depth == 0 {
-                        let start = i;
-                        let slice = &text[start..=end.unwrap()];
-                        return Some(slice.to_string());
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    if let Some(json_str) = extract_last_balanced_json(&cleaned) {
-        println!("🔎 发现末尾的JSON片段: {}", json_str);
-        if let Ok(v) = serde_json::from_str::<Value>(&json_str) {
-            if let Some(ans) = extract_field_from_value(&v) {
-                println!("✅ 从末尾JSON片段中提取到答案: {}", ans);
-                return ans;
-            }
-        } else {
-            println!("⚠️ 末尾JSON片段解析失败");
-        }
-    }
-
-    // 4) 使用正则在混合文本中直接捕获 answer 字段
-    let re = Regex::new(r#"(?s)\{\s*\"(?:answer|anwser)\"\s*:\s*\"(.*?)\"[\s\S]*?\}"#).unwrap();
-    if let Some(caps) = re.captures(&cleaned) {
-        if let Some(m) = caps.get(1) {
-            let ans = m.as_str().to_string();
-            println!("✅ 通过正则从混合文本中捕获到答案: {}", ans);
-            return ans;
-        }
-    }
-
-    // 5) 尝试从中英文"答案:"或"answer:"后面提取文本
-    let text_re = Regex::new(r"(?i)(?:答案|answer)[：:]\s*(.+?)(?:\n|$)").unwrap();
-    if let Some(caps) = text_re.captures(&cleaned) {
-        if let Some(m) = caps.get(1) {
-            let ans = m.as_str().trim().to_string();
-            if !ans.is_empty() {
-                println!("✅ 从\"答案: \"标记后提取到文本: {}", &ans[..std::cmp::min(ans.len(), 100)]);
-                return ans;
-            }
-        }
-    }
-
-    // 6) 如果内容看起来是纯文本答案（不含JSON结构）,直接返回清理后的内容
-    let cleaned_trimmed = cleaned.trim();
-    if cleaned_trimmed.len() > 0 && cleaned_trimmed.len() < 2000 && !cleaned_trimmed.starts_with('{') && !cleaned_trimmed.starts_with('[') {
-        // 检查是否像是一个直接答案（简短文本,不含复杂结构）
-        let lines: Vec<&str> = cleaned_trimmed.lines().filter(|l| !l.trim().is_empty()).collect();
-        if lines.len() <= 3 {
-            println!("✅ 将纯文本内容作为答案使用: {}", &cleaned_trimmed[..std::cmp::min(cleaned_trimmed.len(), 100)]);
-            return cleaned_trimmed.to_string();
-        }
-    }
-
-    // 7) 回退：返回原始内容
-    println!("⚠️ 未能提取到结构化答案,返回原始内容");
-    json_content.to_string()
-}
-
 fn is_timeout_like_model_failure(text: &str) -> bool {
     let lower = text.to_lowercase();
     lower.contains("timeout")
@@ -1747,7 +1557,9 @@ fn is_model_error(text: &str) -> Option<String> {
 
 #[cfg(test)]
 mod same_question_tests {
-    use super::{classify_model_failure, parse_same_question_result};
+    use super::{classify_model_failure, parse_same_question_result, query_http_reply};
+    use crate::types::QueryResponse;
+    use warp::Reply;
 
     #[test]
     fn parses_same_true_with_matched_id() {
@@ -1773,5 +1585,11 @@ mod same_question_tests {
         let (status, msg) = classify_model_failure("错误: 未选择模型").expect("classified");
         assert_eq!(status, 400);
         assert_eq!(msg, "错误: 未选择模型");
+    }
+
+    #[test]
+    fn query_reply_uses_review_http_status() {
+        let reply = query_http_reply(422, &QueryResponse::error("答案待复核".to_string()));
+        assert_eq!(reply.into_response().status(), 422);
     }
 }
