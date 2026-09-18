@@ -42,6 +42,7 @@ export interface AIModel {
   icon?: string    // 模型图标
   isRemote?: boolean  // 是否来自远程同步（禁止编辑/删除）
   enableThinking?: boolean  // 是否启用思考（reasoning）输出
+  enableVision?: boolean  // 是否直接接收图片；旧配置按模型分类回退
   /** Chat 关闭：发送 enable_thinking: false（默认 true） */
   thinkingOffEnableThinkingFalse?: boolean
   /** @deprecated 已由 thinkingOffResponsesEffort 替代 */

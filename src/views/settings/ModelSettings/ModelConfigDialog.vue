@@ -8,9 +8,14 @@
           </svg>
         </button>
         <span class="dialog-title">{{ dialogTitle }}</span>
-        <button class="btn-confirm" type="button" :disabled="isRemote ? false : !isFormValid" @click="handlePrimaryAction">
-          {{ isRemote ? '关闭' : (isEditing ? '完成' : '完成') }}
-        </button>
+        <div class="model-header-actions">
+          <button v-if="isEditing && !isRemote" class="btn-confirm" type="button" :disabled="!isFormValid" @click="handleTest">
+            测试
+          </button>
+          <button class="btn-confirm" type="button" :disabled="isRemote ? false : !isFormValid" @click="handlePrimaryAction">
+            {{ isRemote ? '关闭' : '完成' }}
+          </button>
+        </div>
       </div>
       <div class="dialog-body">
         <div class="split-container" :class="{ 'split-container--compact': !showAdvancedCode }">
@@ -154,6 +159,21 @@
             </div>
 
             <div class="form-group">
+              <label class="form-label form-label--row" for="model-enable-vision">
+                <span>启用视觉</span>
+                <span class="switch-toggle" :class="{ disabled: isRemote }">
+                  <input id="model-enable-vision" type="checkbox" v-model="formData.enableVision" :disabled="isRemote" />
+                  <span class="switch-slider"></span>
+                </span>
+              </label>
+              <p class="form-hint">
+                {{ isRemote
+                  ? '远程模型的视觉配置由管理员下发，本地不可修改。'
+                  : '开启后直接向此模型发送题目图片，请确认模型支持图片输入；关闭后，含图题目需由其他已启用视觉的模型处理。' }}
+              </p>
+            </div>
+
+            <div class="form-group">
               <label class="form-label form-label--row">
                 <span>启用思考</span>
                 <label class="switch-toggle" :class="{ disabled: isRemote }">
@@ -250,6 +270,7 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { linter, lintGutter } from '@codemirror/lint'
 import * as acorn from 'acorn'
 import { type AIModel, type ThinkingEffort, type ThinkingOffResponsesEffort } from '../../../services/modelConfig'
+import { isVisionEnabled } from '../../../services/modelCapabilities'
 import { buildPresetProcessModelJsCode, normalizeApiProtocol, readModelIdFromJsCode } from '../../../services/modelProtocol'
 import { useExclusiveMenu } from '../../../composables/useExclusiveMenu'
 import ModelCategorySwitch from './ModelCategorySwitch.vue'
@@ -271,6 +292,7 @@ interface Props {
 interface Emits {
   (e: 'close'): void
   (e: 'save', model: Partial<AIModel>): void
+  (e: 'test', model: Partial<AIModel>): void
 }
 
 const props = defineProps<Props>()
@@ -309,6 +331,7 @@ const formData = ref({
   jsCode: '',
   modelId: '',
   enableThinking: false,
+  enableVision: false,
   thinkingOffEnableThinkingFalse: true,
   thinkingOffThinkingTypeDisabled: false,
   thinkingOffResponsesEffort: 'minimal' as ThinkingOffResponsesEffort,
@@ -719,6 +742,7 @@ const createDialogFormData = (model?: AIModel | null) => {
       }),
     modelId,
     enableThinking,
+    enableVision: isVisionEnabled(model),
     thinkingOffEnableThinkingFalse,
     thinkingOffThinkingTypeDisabled,
     thinkingOffResponsesEffort,
@@ -751,6 +775,7 @@ watch(() => props.model, (newModel) => {
 
 // 监听类别切换自动替换模板
 watch(() => formData.value.category, (newCategory) => {
+  if (!isEditing.value) formData.value.enableVision = newCategory === 'vision'
   if (formData.value.apiProtocol !== 'custom') {
     syncPresetJsCode()
     return
@@ -1086,7 +1111,10 @@ const handlePrimaryAction = () => {
   handleSubmit()
 }
 
-const handleSubmit = () => {
+const handleSubmit = () => submitModel('save')
+const handleTest = () => submitModel('test')
+
+const submitModel = (action: 'save' | 'test') => {
   if (isRemote.value) {
     emit('close')
     return
@@ -1106,6 +1134,7 @@ const handleSubmit = () => {
     modelId: formData.value.modelId.trim(),
     jsCode: formData.value.apiProtocol === 'custom' ? formData.value.jsCode : buildCurrentPresetJsCode(),
     enableThinking: formData.value.enableThinking,
+    enableVision: formData.value.enableVision,
     thinkingOffEnableThinkingFalse: formData.value.thinkingOffEnableThinkingFalse,
     thinkingOffThinkingTypeDisabled: formData.value.thinkingOffThinkingTypeDisabled,
     thinkingOffResponsesEffort: formData.value.thinkingOffResponsesEffort,
@@ -1118,7 +1147,8 @@ const handleSubmit = () => {
     modelData.id = props.model.id
   }
 
-  emit('save', modelData)
+  if (action === 'test') emit('test', modelData)
+  else emit('save', modelData)
 }
 </script>
 
@@ -1460,6 +1490,12 @@ const handleSubmit = () => {
 .btn-confirm:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.model-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 /* 图标相关样式 */

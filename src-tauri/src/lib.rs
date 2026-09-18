@@ -370,7 +370,7 @@ pub fn run() {
 
             let is_dev = cfg!(debug_assertions);
             let url = if is_dev {
-                tauri::WebviewUrl::External("http://localhost:1420".parse().unwrap())
+                tauri::WebviewUrl::External("http://localhost:51420".parse().unwrap())
             } else {
                 tauri::WebviewUrl::App("/".into())
             };

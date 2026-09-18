@@ -543,6 +543,7 @@ import {
 } from '../utils/urlQuestion'
 import { agreedAnswer, validateAnswer, reviewDecision, serializeAnswer, type AnswerContext } from '../utils/answerDecision'
 import { buildAnswerChatMessages } from '../utils/answerFewShot'
+import { isVisionEnabled, selectVisionModel } from '../services/modelCapabilities'
 
 
 
@@ -2019,6 +2020,11 @@ const callModelWithStreaming = async (
     tools: []
   }
 
+  if (isVisionEnabled(model) && findQuestionImageMatches(query).length > 0) {
+    const questionMessage = testInput.messages[testInput.messages.length - 1]
+    questionMessage.content = await prepareVisionRequestContent(await buildMultimodalContent(query))
+  }
+
   // 构建配置对象
   const config = {
     ...model,
@@ -2470,9 +2476,9 @@ const callModelAPI = async (requestId: string, query: string) => {
 
   try {
     // 只有文本模型参与基础输出；视觉模型仅在 query 包含图片时才加入
-    const hasImage = /https?:\/\/\S+\.(png|jpg|jpeg|gif|webp)/i.test(query) || query.includes('base64')
+    const hasImage = findQuestionImageMatches(query).length > 0
     const selectedModels = [...globalSelectedTextModels.value]
-    if (hasImage && globalSelectedVisionModel.value) {
+    if (hasImage && isVisionEnabled(globalSelectedVisionModel.value) && globalSelectedVisionModel.value) {
       selectedModels.push(globalSelectedVisionModel.value)
     }
 
@@ -3840,9 +3846,9 @@ const analyzeUrlQuestion = async (requestId: string) => {
   if (log.urlQuestion.analyzing || log.urlQuestion.analysisResult || activeUrlAnalysisRequestIds.has(requestId)) return
   if (isRequestCancelled(requestId)) return
 
-  const visionModel = globalSelectedVisionModel.value
+  const visionModel = selectVisionModel(globalSelectedVisionModel.value, globalSelectedTextModels.value)
   if (!visionModel) {
-    const errorMessage = '请先在模型选择中配置视觉模型'
+    const errorMessage = '请为已选文本模型启用视觉，或选择已启用视觉的独立视觉模型'
     log.urlQuestion.analysisError = errorMessage
     log.urlQuestion.analyzing = false
     log.urlQuestion.streamingResponse = ''

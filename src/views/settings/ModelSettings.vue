@@ -331,6 +331,7 @@
       :platform-api-key="selectedPlatform?.apiKey"
       @close="closeModelDialog"
       @save="saveModel"
+      @test="handleTestModelDraft"
     />
 
     <!-- 测试弹窗 -->
@@ -370,6 +371,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
 import { useModelConfig, fetchRemoteModelsCatalog } from '../../services/modelConfig'
+import { isVisionEnabled } from '../../services/modelCapabilities'
 import type { AIPlatform, AIModel, RemoteModelIconMapping } from '../../services/modelConfig'
 import { resolveExecutableModelJsCode, resolveRuntimeModelId } from '../../services/modelProtocol'
 import { environmentDetector } from '../../services/environmentDetector'
@@ -1107,6 +1109,19 @@ const handleTestModel = async (payload?: { testFunctionCalling: boolean }) => {
   hideModelMenu()
 }
 
+const handleTestModelDraft = async (draft: Partial<AIModel>) => {
+  if (!editingModel.value || testingModelId.value !== null) return
+  const model = { ...editingModel.value, ...draft }
+  modelToTest.value = model
+  testDialogModelName.value = model.displayName || model.name
+  currentTestResult.value = null
+  currentTestError.value = ''
+  streamingResponse.value = ''
+  streamingReasoning.value = ''
+  showTestDialog.value = true
+  await testModel(model)
+}
+
 const handleStartTest = async ({ testFunctionCalling }: { testFunctionCalling: boolean }) => {
   if (modelToTest.value) {
     await testModel(modelToTest.value, testFunctionCalling)
@@ -1231,6 +1246,7 @@ const saveModel = async (modelData: Partial<AIModel>) => {
         jsCode: modelData.jsCode,
         category: modelData.category,
         enableThinking: modelData.enableThinking,
+        enableVision: modelData.enableVision,
         thinkingOffEnableThinkingFalse: modelData.thinkingOffEnableThinkingFalse,
         thinkingOffThinkingTypeDisabled: modelData.thinkingOffThinkingTypeDisabled,
         thinkingOffResponsesEffort: modelData.thinkingOffResponsesEffort,
@@ -1250,6 +1266,7 @@ const saveModel = async (modelData: Partial<AIModel>) => {
         jsCode: modelData.jsCode || '',
         category: modelData.category || 'text' as const,
         enableThinking: modelData.enableThinking ?? false,
+        enableVision: modelData.enableVision ?? modelData.category === 'vision',
         thinkingOffEnableThinkingFalse: modelData.thinkingOffEnableThinkingFalse ?? true,
         thinkingOffThinkingTypeDisabled: modelData.thinkingOffThinkingTypeDisabled ?? false,
         thinkingOffResponsesEffort: modelData.thinkingOffResponsesEffort ?? 'minimal',
@@ -1389,7 +1406,7 @@ const testModel = async (model: AIModel, testFunctionCalling: boolean = false) =
     // 根据模型类型构建不同的测试输入数据
     let testInput: any
     
-    if (model.category === 'vision' && !testFunctionCalling) {
+    if (isVisionEnabled(model) && !testFunctionCalling) {
       // 视觉模型测试：使用图片输入
       // 将图片转换为base64格式
       let imageBase64 = ''
@@ -1670,7 +1687,7 @@ const testModel = async (model: AIModel, testFunctionCalling: boolean = false) =
                   tokenRate: tokenRate ?? undefined,
                   timestamp: new Date().toLocaleString(),
                   modelType: model.category,
-                  testType: model.category === 'vision' ? '图像理解测试' : '文本对话测试'
+                  testType: testFunctionCalling ? 'Function Calling 测试' : isVisionEnabled(model) ? '图像理解测试' : '文本对话测试'
                 }
               }
               break;
@@ -1704,7 +1721,7 @@ const testModel = async (model: AIModel, testFunctionCalling: boolean = false) =
                   tokenRate: tokenRate ?? undefined,
                   timestamp: new Date().toLocaleString(),
                   modelType: model.category,
-                  testType: model.category === 'vision' ? '图像理解测试' : '文本对话测试'
+                  testType: testFunctionCalling ? 'Function Calling 测试' : isVisionEnabled(model) ? '图像理解测试' : '文本对话测试'
                 }
               }
               break;

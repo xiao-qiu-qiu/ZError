@@ -329,7 +329,7 @@ pub async fn open_url_content_window(
     let window_url = if is_dev {
         // 开发环境：使用localhost
         format!(
-            "http://localhost:1420/#/url-content?windowId={}&questions={}",
+            "http://localhost:51420/#/url-content?windowId={}&questions={}",
             window_id,
             urlencoding::encode(&questions)
         )
@@ -399,7 +399,7 @@ pub async fn open_text_window(
     let is_dev = cfg!(debug_assertions);
     let encoded_name = urlencoding::encode(&text);
     let window_url = if is_dev {
-        format!("http://localhost:1420/#/file-info?name={}", encoded_name)
+        format!("http://localhost:51420/#/file-info?name={}", encoded_name)
     } else {
         format!("tauri://localhost/#/file-info?name={}", encoded_name)
     };
