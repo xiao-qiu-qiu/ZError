@@ -1,6 +1,7 @@
 {
   "bundle": {
     "targets": ["nsis"],
+    "useLocalToolsDir": true,
     "createUpdaterArtifacts": false
   }
 }

@@ -3,7 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 
-const cargoBin = path.join(os.homedir(), ".cargo", "bin");
+const cargoHome = process.env.CARGO_HOME || path.join(os.homedir(), ".cargo");
+const cargoBin = path.join(cargoHome, "bin");
 const cargoExe = path.join(cargoBin, process.platform === "win32" ? "cargo.exe" : "cargo");
 if (!fs.existsSync(cargoExe)) {
   console.error(`[run-tauri] cargo not found at ${cargoExe}`);

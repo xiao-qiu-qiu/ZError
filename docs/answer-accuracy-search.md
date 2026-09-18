@@ -74,8 +74,12 @@ fork 的 Windows x64 安装包使用 NSIS，构建命令：
 
 ```powershell
 npm ci
-npm run tauri -- build --ci --bundles nsis --config src-tauri/tauri.release-manual.conf.json
+npm run tauri -- build --ci --bundles nsis --config src-tauri/tauri.release-manual.conf.json -- --locked
 ```
+
+请使用上述 Tauri 生产构建命令：它会先生成 `dist/`，再以生产资源协议编译并嵌入前端资源。单独运行 `cargo build --release` 不等同于完整应用构建，可能产生启动时提示 `asset not found: index.html` 的程序。发布前应启动打包后的程序，确认主界面实际显示。
+
+Rust 安装在自定义目录时，设置 `CARGO_HOME` 和 `RUSTUP_HOME`；启动脚本优先从 `CARGO_HOME/bin` 查找 Cargo，未设置时使用用户目录中的 `.cargo/bin`。
 
 此配置仅关闭上游自动更新签名产物的生成，不需要上游私钥。安装包发布在本 fork 的 GitHub Releases，用户下载后退出 ZError（包括系统托盘），沿用原目录覆盖安装。安装包没有 Windows Authenticode 签名；Release 同时提供 SHA-256 校验文件。
 
