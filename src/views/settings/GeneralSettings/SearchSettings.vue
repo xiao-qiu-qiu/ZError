@@ -187,7 +187,7 @@
       </div>
     </div>
 
-    <p class="search-provider-note">Bing 资料请先核对；也可改用 Tavily 或自建搜索。</p>
+    <p class="search-provider-note">Bing 会过滤明显跑题的资料；结果异常时自动直连重试一次。资料仍需核对，也可选择 Tavily 或自建搜索。</p>
   </section>
 </template>
 

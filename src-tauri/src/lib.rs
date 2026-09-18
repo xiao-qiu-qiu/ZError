@@ -5,6 +5,7 @@
 pub mod app_activity;
 mod answer_validation;
 pub mod commands;
+mod search_http;
 pub mod database;
 pub mod logger;
 pub mod server;
@@ -238,6 +239,7 @@ pub fn run() {
 
     builder
         .invoke_handler(tauri::generate_handler![
+            search_http::search_bing_direct,
             greet,
             can_native_updater_install,
             create_directory,

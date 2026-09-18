@@ -96,7 +96,7 @@ export async function runModel(options: ModelRuntimeOptions): Promise<string> {
       }
       if (enabled && search.trace.state === 'failed' && search.trace.sources.length === 0) throw new Error('本题检索失败且没有取得证据，答案待复核')
       if (!text.trim()) throw new Error('模型未返回有效答案')
-      if (enabled && consumedSources.size) { search.trace.state = 'complete'; search.emit((config.model || '模型') + ' 已读取 ' + consumedSources.size + ' 条检索来源并完成作答；来源仍需结合题意核对') }
+      if (enabled && consumedSources.size) { search.trace.state = 'complete'; search.emit((config.model || '模型') + ' 已接收 ' + consumedSources.size + ' 条检索资料并完成作答；摘要不等于正文核验，来源仍需结合题意核对') }
       return text
     }
     if (!enabled || nativeSearch) throw new Error('模型请求了未启用的函数工具')

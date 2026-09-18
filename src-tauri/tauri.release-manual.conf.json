@@ -1,4 +1,7 @@
 {
+  "build": {
+    "features": ["custom-protocol"]
+  },
   "bundle": {
     "targets": ["nsis"],
     "useLocalToolsDir": true,

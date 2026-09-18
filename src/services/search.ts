@@ -1,4 +1,5 @@
 import type { SearchSettings } from './settings'
+import { BING_USER_AGENT, bingSearchUrl, directBingSearch, isBingSourceRelevant, parseBingRss } from './bingSearch'
 
 export interface SearchSource { url: string; title: string; snippet: string }
 export interface SearchTrace {
@@ -32,7 +33,7 @@ export class SearchSession {
   private operations = new Map<string, { promise: Promise<string>; controller: AbortController; consumers: number; settled: boolean }>()
   private nativeIds = new Set<string>()
   private nativeQueue: Promise<unknown> = Promise.resolve()
-  constructor(public settings: SearchSettings, private fetcher: Fetch, private notify: (trace: SearchTrace) => void = () => {}) {}
+  constructor(public settings: SearchSettings, private fetcher: Fetch, private notify: (trace: SearchTrace) => void = () => {}, private bingFallback = directBingSearch) {}
   /** Hosted searches are serialized so the next model can reuse this question's evidence. */
   async withNative<T>(signal: AbortSignal, task: () => Promise<T>): Promise<T> {
     const next = this.nativeQueue.catch(() => {}).then(() => {
@@ -117,8 +118,9 @@ export class SearchSession {
       entry.promise = this.run(name, args, controller.signal).catch(error => {
         if (this.operations.get(key) === entry) this.operations.delete(key)
         if (controller.signal.aborted) throw error
-        this.trace.state = 'failed'; this.emit(error.message || '搜索失败')
-        return JSON.stringify({ error: error.message || '搜索失败', instruction: '资料获取失败。需要检索依据时请标记 needs_review，不得声称已核实。' })
+        const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '搜索失败'
+        this.trace.state = 'failed'; this.emit(message)
+        return JSON.stringify({ error: message, instruction: '资料获取失败。需要检索依据时请标记 needs_review，不得声称已核实。' })
       }).finally(() => { entry.settled = true })
       operation = entry
       this.operations.set(key, operation)
@@ -154,16 +156,28 @@ export class SearchSession {
       else {
         const search = async () => {
           if (this.settings.provider === 'bing') {
-            const url = new URL('https://www.bing.com/search')
-            url.search = new URLSearchParams({ q: query, format: 'rss' }).toString()
-            const response = await this.request(url.href, {}, signal)
-            const doc = new DOMParser().parseFromString(await response.text(), 'application/xml')
-            if (doc.querySelector('parsererror')) throw new Error('搜索服务返回了非 RSS 数据')
-            return [...doc.querySelectorAll('item')].slice(0, 5).map(item => ({
-              url: item.querySelector('link')?.textContent || '',
-              title: item.querySelector('title')?.textContent || '',
-              snippet: item.querySelector('description')?.textContent || '',
-            }))
+            const accepted = (xml: string) => {
+              const items = parseBingRss(xml)
+              const relevant = items.filter(s => publicWebUrl(s.url) && isBingSourceRelevant(query, s))
+              if (relevant.length < items.length) this.emit('已过滤 ' + (items.length - relevant.length) + ' 条跑题或无效的 Bing 结果')
+              return relevant.slice(0, 5)
+            }
+            try {
+              const response = await this.request(bingSearchUrl(query), { headers: { 'User-Agent': BING_USER_AGENT } }, signal)
+              const results = accepted(await response.text())
+              if (results.length) return results
+            } catch (error) {
+              if (signal.aborted) throw error
+            }
+            if (signal.aborted) throw signal.reason
+            this.emit('Bing 未返回相关资料，正在直连重试一次')
+            // Only the fixed public Bing endpoint bypasses the system proxy.
+            // This transport has its own bounded timeout and no model credentials.
+            const xml = await this.bingFallback(query, this.settings.requestTimeoutSeconds)
+            if (signal.aborted) throw signal.reason
+            const results = accepted(xml)
+            if (!results.length) throw new Error('Bing 返回的资料与搜索词无关或为空，请更换搜索词或搜索供应商')
+            return results
           }
           if (this.settings.provider === 'tavily') {
             if (!this.settings.apiKey.trim()) throw new Error('请配置 Tavily 搜索密钥')
@@ -184,12 +198,13 @@ export class SearchSession {
         // Only same-question consumers share in-flight operations. Cross-question
         // sharing is via completed cache, so one cancellation cannot abort another.
         values = await search()
+        values = values.filter(v => publicWebUrl(v.url)).slice(0, 5)
         if (values.length && this.settings.cacheTtlMinutes > 0) {
           if (cache.size >= 100) cache.delete(cache.keys().next().value!)
           cache.set(cacheKey, { value: values, expires: Date.now() + this.settings.cacheTtlMinutes * 60_000 })
         }
       }
-      values = values.filter(v => publicWebUrl(v.url)).slice(0, 5)
+      values = values.filter(v => publicWebUrl(v.url) && (this.settings.provider !== 'bing' || isBingSourceRelevant(query, v))).slice(0, 5)
       if (!values.length) throw new Error('搜索未返回可用来源')
       this.addSources(values); this.trace.state = 'complete'; this.emit('获得 ' + values.length + ' 条来源')
       return JSON.stringify({ sources: values, instruction: '这些是待核对的搜索摘要；关键判断请用 read_page 核对正文。' })
