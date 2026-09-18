@@ -48,7 +48,7 @@ const response = (xml: string) => new Response(xml, {
 })
 
 describe('Bing RSS search evidence', () => {
-  test('中文题意的 Pizza、Paris 和 301 结果被过滤，always 模式不调用模型作答', async () => {
+  test('中文题意的跑题结果被过滤，内置兜底也无证据时不接受答案', async () => {
     const query = '中国古代四大发明有哪些'
     const unrelated = rss([
       source('Pizza in Paris', 'https://example.com/pizza', 'Pizza and Paris travel guide'),
@@ -75,9 +75,9 @@ describe('Bing RSS search evidence', () => {
         processCalls++
         return { content: '{"answer":"不应作答"}' }
       },
-    })).rejects.toThrow('每题检索未获得可用来源')
+    })).rejects.toThrow('内置搜索兜底未获得真实搜索事件和来源')
 
-    expect(fetchCalls).toBe(1)
+    expect(fetchCalls).toBe(2) // Bing request plus the Responses fallback.
     expect(fallbackCalls).toBe(1)
     expect(processCalls).toBe(0)
     expect(session.trace.sources).toHaveLength(0)

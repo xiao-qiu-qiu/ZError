@@ -246,7 +246,7 @@
                 active: selectedCategory === 'vision' 
                   ? isVisionModelSelected(model.id)
                   : (selectedCategory === 'summary' ? isSummaryModelSelected(model.id) : isTextModelSelected(model.id)),
-                'model-item--disabled': isSelectedPlatformDisabled
+                'model-item--disabled': isSelectedPlatformDisabled || (selectedCategory === 'vision' && !isVisionEnabled(model))
               }"
               @click="selectModel(model)"
               @contextmenu.prevent="showModelContextMenuHandler($event, model)"
@@ -258,6 +258,7 @@
               <div class="model-info">
                 <div class="model-header">
                   <h5 class="model-name">{{ model.displayName }}</h5>
+                  <span v-if="selectedCategory === 'vision' && !isVisionEnabled(model)">视觉已关闭</span>
                  
                 </div>
                 
@@ -611,7 +612,8 @@ const filteredModels = computed(() => {
     return models.filter(model => model.category === 'text')
   }
   
-  return models.filter(model => model.category === 'vision')
+  // 保留原视觉分类的管理入口，关闭能力后仍可再次编辑开启。
+  return models.filter(model => model.category === 'vision' || isVisionEnabled(model))
 })
 
 const isSelectedPlatformDisabled = computed(() => selectedPlatform.value?.enabled === false)

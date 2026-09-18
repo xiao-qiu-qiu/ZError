@@ -1,5 +1,6 @@
 import { reactive, watch, computed } from 'vue'
 import { normalizeApiProtocol } from './modelProtocol'
+import { isVisionEnabled } from './modelCapabilities'
 
 // AI 平台配置接口
 export interface AIPlatform {
@@ -472,7 +473,7 @@ class ModelConfigManager {
     const enabledModels = allModels.filter(model => model.enabled !== false)
     const textModelIds = new Set(enabledModels.filter(model => model.category === 'text').map(model => model.id))
     const summaryModelIds = new Set(enabledModels.map(model => model.id))
-    const visionModelIds = new Set(enabledModels.filter(model => model.category === 'vision').map(model => model.id))
+    const visionModelIds = new Set(enabledModels.filter(isVisionEnabled).map(model => model.id))
 
     const normalizedTextModels = this.dedupeAndFilterModelIds(
       [
@@ -779,11 +780,13 @@ class ModelConfigManager {
         }
         this.settings.selectedSummaryModel = this.settings.selectedSummaryModels[0] || null
       }
-    } else if (category === 'vision') {
-      if (this.settings.selectedVisionModel === modelId) {
-        const replacement = findReplacement()
-        this.settings.selectedVisionModel = replacement?.id || null
-      }
+    }
+    // 视觉是独立能力：文本/总结模型也可能被选作视觉模型。
+    if (this.settings.selectedVisionModel === modelId) {
+      const pool = candidateModels
+        ?? this.settings.platforms.find(p => p.id === platformId)?.models ?? []
+      const replacement = pool.find(m => m.id !== modelId && m.enabled !== false && isVisionEnabled(m))
+      this.settings.selectedVisionModel = replacement?.id || null
     }
   }
 
@@ -998,8 +1001,7 @@ class ModelConfigManager {
   getSelectedVisionModel(): AIModel | null {
     if (!this.settings.selectedVisionModel) return null
     
-    const allModels = this.settings.platforms.flatMap(p => p.models)
-    return allModels.find(m => m.id === this.settings.selectedVisionModel && m.category === 'vision') || null
+    return this.getAvailableModels().find(m => m.id === this.settings.selectedVisionModel && isVisionEnabled(m)) || null
   }
 
   /**
@@ -1038,6 +1040,7 @@ class ModelConfigManager {
    * 设置选中的视觉模型
    */
   setSelectedVisionModel(modelId: string | null): void {
+    if (modelId && !this.getAvailableModels().some(m => m.id === modelId && isVisionEnabled(m))) return
     this.settings.selectedVisionModel = modelId
     // 移除互斥逻辑，允许同时选择文本和视觉模型
   }
@@ -1049,7 +1052,7 @@ class ModelConfigManager {
     if (this.settings.selectedVisionModel === modelId) {
       this.settings.selectedVisionModel = null
     } else {
-      this.settings.selectedVisionModel = modelId
+      this.setSelectedVisionModel(modelId)
     }
   }
 
@@ -1158,6 +1161,9 @@ class ModelConfigManager {
       const model = platform.models.find(m => m.id === modelId)
       if (model) {
         Object.assign(model, updates)
+        if (this.settings.selectedVisionModel === modelId && (!model.enabled || !isVisionEnabled(model))) {
+          this.settings.selectedVisionModel = null
+        }
         break
       }
     }

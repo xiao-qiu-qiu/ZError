@@ -187,7 +187,7 @@
       </div>
     </div>
 
-    <p class="search-provider-note">Bing 会过滤明显跑题的资料；结果异常时自动直连重试一次。资料仍需核对，也可选择 Tavily 或自建搜索。</p>
+    <p class="search-provider-note">Tavily、Bing、SearXNG 搜索失败时，自动使用当前模型同平台的内置搜索兜底，需平台支持 Responses 搜索，可能产生平台搜索费用。Bing 会先直连重试一次。取消或整题超时后停止搜索。</p>
   </section>
 </template>
 

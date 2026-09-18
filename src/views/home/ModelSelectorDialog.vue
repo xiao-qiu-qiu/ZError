@@ -56,6 +56,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { AIModel, AIPlatform } from '../../services/modelConfig'
+import { isVisionEnabled } from '../../services/modelCapabilities'
 import ModelCategorySwitch from '../settings/ModelSettings/ModelCategorySwitch.vue'
 
 interface Props {
@@ -92,7 +93,7 @@ const isModelSelected = (model: AIModel) => {
 
 const filteredModels = computed(() => {
   const targetCategory = selectedCategory.value === 'summary' ? 'text' : selectedCategory.value
-  let models = props.availableModels.filter(m => m.category === targetCategory)
+  let models = props.availableModels.filter(m => targetCategory === 'vision' ? isVisionEnabled(m) : m.category === targetCategory)
   if (searchQuery.value.trim()) {
     const q = searchQuery.value.toLowerCase()
     models = models.filter(m => m.displayName.toLowerCase().includes(q) || m.id.toLowerCase().includes(q))

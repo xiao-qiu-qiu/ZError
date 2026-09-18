@@ -2478,7 +2478,8 @@ const callModelAPI = async (requestId: string, query: string) => {
     // 只有文本模型参与基础输出；视觉模型仅在 query 包含图片时才加入
     const hasImage = findQuestionImageMatches(query).length > 0
     const selectedModels = [...globalSelectedTextModels.value]
-    if (hasImage && isVisionEnabled(globalSelectedVisionModel.value) && globalSelectedVisionModel.value) {
+    if (hasImage && isVisionEnabled(globalSelectedVisionModel.value) && globalSelectedVisionModel.value
+      && !selectedModels.some(model => model.id === globalSelectedVisionModel.value!.id)) {
       selectedModels.push(globalSelectedVisionModel.value)
     }
 
