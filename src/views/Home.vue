@@ -170,6 +170,7 @@
     </div>
 
     <!-- 右侧弹出的请求详情面板 -->
+    <div v-if="showLogDetails && selectedLog" class="request-details-backdrop" @click.stop="closeRequestDetails"></div>
     <div v-if="showLogDetails && selectedLog" class="request-details-overlay" :class="{ 'show': slideInActive }"
       :style="{ width: overlayWidth + 'px' }">
       <!-- 拖拽条 -->
@@ -4693,6 +4694,12 @@ onUnmounted(() => {
 
 
 /* 右侧弹出请求详情面板样式 */
+.request-details-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+}
+
 .request-details-overlay {
   position: fixed;
   top: 0;

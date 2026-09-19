@@ -56,6 +56,7 @@ async function runModelAttempt(options: ModelRuntimeOptions): Promise<string> {
   }
   checkFallback()
   const consumedSources = new Set<string>()
+  let budgetMessage: { role: string; content: string } | undefined
   // Hosted search content stays in that provider request. Only actual text
   // returned to this client can be reused as evidence in another model call.
   const shareableSources = () => search?.trace.sources.filter(s => s.snippet.trim()) || []
@@ -71,7 +72,8 @@ async function runModelAttempt(options: ModelRuntimeOptions): Promise<string> {
         if (!shareableSources().length) throw new Error('每题检索未获得可用来源，请检查搜索服务')
       }
     }
-    input.messages.unshift({ role: 'system', content: SEARCH_INSTRUCTIONS + ` 本题剩余最多搜索 ${Math.max(0, search.settings.maxSearches - search.searchBudgetUsed)} 次、读取 ${Math.max(0, search.settings.maxPages - search.trace.pages)} 页，请在预算内完成。` })
+    budgetMessage = { role: 'system', content: '' }
+    input.messages.unshift(budgetMessage)
     input.tools = nativeSearch ? [{ type: 'web_search' }] : searchTools
     input.max_tool_calls = search.settings.maxSearches + search.settings.maxPages
     input.tool_choice = search.settings.mode === 'always' || options.requireNativeSearch ? 'required' : 'auto'
@@ -96,6 +98,15 @@ async function runModelAttempt(options: ModelRuntimeOptions): Promise<string> {
   const maxTurns = enabled ? search.settings.maxSearches + search.settings.maxPages + 2 : 1
   for (let turn = 0; turn < maxTurns; turn++) {
     checkFallback()
+    if (enabled) {
+      const remaining = search.budget
+      if (budgetMessage) budgetMessage.content = SEARCH_INSTRUCTIONS + ` 本题剩余最多搜索 ${remaining.searchesRemaining} 次、读取 ${remaining.pagesRemaining} 页，请在预算内完成。`
+      if (!nativeSearch) {
+        input.tools = searchTools.filter(tool => tool.function.name === 'web_search' ? remaining.searchesRemaining > 0 : remaining.pagesRemaining > 0 && search.trace.sources.some(s => !s.accessNotice))
+        if (!input.tools.length) delete input.tool_choice
+        else if (input.tool_choice === 'required' && remaining.searchesRemaining === 0) input.tool_choice = 'auto'
+      }
+    }
     let text = ''
     const calls = new Map<string, any>()
     const rawItems: any[] = []

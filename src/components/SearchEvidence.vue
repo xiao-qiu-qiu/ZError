@@ -16,6 +16,7 @@
           <small>{{ readableUrl(source.url) }}</small>
           <p v-if="source.snippet">{{ source.snippet.slice(0, 350) }}</p>
           <small v-else>仅来源链接 · 客户端未收到摘要</small>
+          <small v-if="source.accessNotice">正文读取提示：{{ source.accessNotice }}</small>
         </li>
       </ol>
       <ul class="search-events"><li v-for="(message, i) in trace.messages" :key="i">{{ message }}</li></ul>
