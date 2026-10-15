@@ -9,7 +9,7 @@ test('视觉能力模型可跨分类选中、保存恢复，关闭与删除会�
     value: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) },
   })
   try {
-    const { modelConfigManager: manager } = await import('../src/services/modelConfig')
+    const { modelConfigManager: manager } = await import('../src/services/model/config')
     const makeModel = (id: string, category = 'text', enableVision = true) => ({
       id, name: id, displayName: id, platformId: 'custom_fixture', category,
       enableVision, enabled: true, maxTokens: 1024, temperature: 0.7, topP: 1,

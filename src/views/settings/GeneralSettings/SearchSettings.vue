@@ -195,7 +195,7 @@
 import { computed } from 'vue'
 
 import { useSettingsManager } from '../../../composables/useSettingsManager'
-import type { SearchMode, SearchSettings } from '../../../services/settings'
+import type { SearchMode, SearchSettings } from '../../../services/app/settings'
 
 const { settings, setSetting, saveSettings } = useSettingsManager()
 

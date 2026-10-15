@@ -29,6 +29,8 @@ pub struct ModelCallRequest {
     pub request_id: String, // 关联的请求ID
     pub query: String,      // 需要查询的内容
     pub timestamp: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub question_context: Option<crate::types::QueryRequest>,
 }
 
 // 新增：模型调用进度事件（用于流式输出的活跃信号）
@@ -275,11 +277,12 @@ impl RequestLogger {
     }
 
     // 新增：发送模型调用请求事件
-    pub fn send_model_call_request(&self, request_id: String, query: String) {
+    pub fn send_model_call_request(&self, request_id: String, query: String, question_context: Option<crate::types::QueryRequest>) {
         let event = ModelCallRequest {
             request_id,
             query,
             timestamp: Utc::now(),
+            question_context,
         };
 
         println!(

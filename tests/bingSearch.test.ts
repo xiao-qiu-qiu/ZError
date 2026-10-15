@@ -3,7 +3,7 @@ import { DOMParser } from '@xmldom/xmldom'
 import { runModel } from '../src/services/modelRuntime'
 import { isBingSourceRelevant, parseBingRss } from '../src/services/bingSearch'
 import { SearchSession, type SearchSource } from '../src/services/search'
-import type { SearchSettings } from '../src/services/settings'
+import type { SearchSettings } from '../src/services/app/settings'
 
 const globalScope = globalThis as Record<string, unknown>
 const originalDOMParser = globalScope.DOMParser

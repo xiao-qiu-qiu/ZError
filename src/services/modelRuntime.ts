@@ -1,5 +1,5 @@
 import { SearchSession, searchTools, SEARCH_INSTRUCTIONS, publicWebUrl } from './search'
-import { buildPresetProcessModelJsCode } from './modelProtocol'
+import { buildPresetProcessModelJsCode } from './model/protocol'
 
 export interface ModelRuntimeOptions {
   input: any; config: any; signal: AbortSignal

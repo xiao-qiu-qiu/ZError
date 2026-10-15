@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
-import type { AIModel } from '../src/services/modelConfig'
-import { isVisionEnabled, selectVisionModel } from '../src/services/modelCapabilities'
+import type { AIModel } from '../src/services/model/config'
+import { isVisionEnabled, selectVisionModel } from '../src/utils/modelCapabilities'
 
 const model = (category: AIModel['category'], enableVision?: boolean): AIModel => ({
   id: category, name: category, displayName: category, platformId: 'fixture',

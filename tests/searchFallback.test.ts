@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { runModel } from '../src/services/modelRuntime'
 import { SearchSession } from '../src/services/search'
-import type { SearchSettings } from '../src/services/settings'
+import type { SearchSettings } from '../src/services/app/settings'
 
 const MODEL_BASE_URL = 'https://model.example.org/v1'
 const RESPONSES_URL = `${MODEL_BASE_URL}/responses`

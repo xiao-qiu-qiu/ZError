@@ -371,6 +371,85 @@ fn build_normal_model_query(request: &QueryRequest, has_url: bool) -> String {
     }
 }
 
+fn ocs_option_values(text: &str) -> HashMap<String, String> {
+    let labels = Regex::new(r"(?i)(^|\s)([A-Z])[\.、．\)）]\s*").unwrap();
+    let matches: Vec<_> = labels.captures_iter(text).collect();
+    if !matches.is_empty() {
+        return matches.iter().enumerate().map(|(index, captures)| {
+            let start = captures.get(0).unwrap().end();
+            let end = matches.get(index + 1).map(|next| next.get(0).unwrap().start()).unwrap_or(text.len());
+            (captures[2].to_uppercase(), text[start..end].trim().to_string())
+        }).collect();
+    }
+    text.lines().map(str::trim).filter(|line| !line.is_empty()).enumerate()
+        .map(|(index, line)| (index.to_string(), line.to_string())).collect()
+}
+
+fn restore_ocs_image_answer(request: &QueryRequest, answer: &str) -> Result<String, String> {
+    let refs = Regex::new(r"\[图片(\d+)\]").unwrap();
+    if request.images.is_empty() || !refs.is_match(answer) {
+        return Ok(answer.to_string());
+    }
+    if refs.captures_iter(answer).any(|captures| {
+        let number = captures[1].parse::<usize>().unwrap_or(0);
+        number == 0 || number > request.images.len()
+    }) {
+        return Err("OCS 图片答案缺少原始图片对应关系".to_string());
+    }
+    let compact = |text: &str| text.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    let mut urls = HashMap::new();
+    for (raw, suggestion) in [
+        (Some(request.title.as_str()), request.suggestion_title.as_deref()),
+        (request.options.as_deref(), request.suggestion_options.as_deref()),
+    ] {
+        let (Some(raw), Some(suggestion)) = (raw, suggestion) else { continue };
+        let text = compact(suggestion);
+        let placeholders: Vec<_> = refs.captures_iter(&text).collect();
+        if placeholders.is_empty() { continue; }
+        let mut pattern = String::from("^");
+        let mut offset = 0;
+        for placeholder in &placeholders {
+            let position = placeholder.get(0).unwrap();
+            pattern.push_str(&regex::escape(&text[offset..position.start()]));
+            pattern.push_str("((?:https?://|data:image/).*?)");
+            offset = position.end();
+        }
+        pattern.push_str(&regex::escape(&text[offset..]));
+        pattern.push('$');
+        let matcher = Regex::new(&pattern).map_err(|e| e.to_string())?;
+        let raw = compact(raw);
+        let Some(captures) = matcher.captures(&raw) else { continue };
+        for (index, placeholder) in placeholders.iter().enumerate() {
+            let number = placeholder[1].parse::<usize>().unwrap_or(0);
+            if number == 0 || number > request.images.len() { continue; }
+            let key = placeholder[0].to_string();
+            let url = captures[index + 1].to_string();
+            if urls.get(&key).is_some_and(|old| old != &url) {
+                return Err("OCS 图片编号对应多个原始地址".to_string());
+            }
+            urls.insert(key, url);
+        }
+    }
+    let originals = ocs_option_values(request.options.as_deref().unwrap_or_default());
+    let suggestions = ocs_option_values(request.suggestion_options.as_deref().unwrap_or_default());
+    answer.split("###").map(|part| {
+        if !refs.is_match(part) { return Ok(part.to_string()); }
+        let keys: Vec<_> = suggestions.iter().filter(|(_, value)| compact(value) == compact(part)).map(|(key, _)| key).collect();
+        if keys.len() == 1 && originals.len() == suggestions.len() {
+            if let Some(original) = originals.get(keys[0]) { return Ok(original.clone()); }
+        }
+        let mut missing = false;
+        let restored = refs.replace_all(part, |captures: &regex::Captures<'_>| {
+            urls.get(&captures[0]).cloned().unwrap_or_else(|| {
+                missing = true;
+                captures[0].to_string()
+            })
+        });
+        if missing { Err("OCS 图片答案缺少原始图片对应关系".to_string()) }
+        else { Ok(restored.trim().to_string()) }
+    }).collect::<Result<Vec<_>, String>>().map(|parts| parts.join("###"))
+}
+
 fn answer_review_error(reason: impl AsRef<str>) -> (u16, QueryResponse) {
     (
         422,
@@ -427,11 +506,12 @@ fn exact_answers_conflict(data_list: &[QueryData]) -> bool {
         .any(|item| item.answer != first.answer)
 }
 
-fn emit_model_call_request(app: Option<&AppHandle>, request_id: &str, query: &str) {
+fn emit_model_call_request(app: Option<&AppHandle>, request_id: &str, query: &str, question_context: Option<&QueryRequest>) {
     if let Some(app) = app {
         let payload = serde_json::json!({
             "request_id": request_id,
             "query": query,
+            "question_context": question_context,
         });
         if let Err(e) = app.emit("model-call-request", payload) {
             println!("⚠️ emit model-call-request failed: {}", e);
@@ -450,8 +530,8 @@ async fn wait_and_store_ai_answer(
     has_url: bool,
 ) -> (u16, QueryResponse) {
     let formatted_query = build_normal_model_query(request, has_url);
-    logger.send_model_call_request(request_id.to_string(), formatted_query.clone());
-    emit_model_call_request(app, request_id, &formatted_query);
+    logger.send_model_call_request(request_id.to_string(), formatted_query.clone(), Some(request.clone()));
+    emit_model_call_request(app, request_id, &formatted_query, Some(request));
 
     // 覆盖前端超时 × 重试；absolute 防止 keepalive 无限续命
     let (inactivity_secs, absolute_secs) = model_wait_budget_secs(has_url);
@@ -481,8 +561,12 @@ async fn wait_and_store_ai_answer(
                 return answer_review_error("模型标记该答案需要复核");
             }
 
+            let restored_answer = match restore_ocs_image_answer(request, &parsed_answer.answer) {
+                Ok(answer) => answer,
+                Err(reason) => return answer_review_error(reason),
+            };
             let extracted_answer = match validate_and_normalize_answer(
-                &parsed_answer.answer,
+                &restored_answer,
                 &request.title,
                 request.options.as_deref(),
                 request.query_type.as_deref(),
@@ -545,7 +629,7 @@ async fn resolve_query_with_same_question_check(
     request_id: &str,
     request_origin: &str,
 ) -> (u16, QueryResponse) {
-    let mut has_url = contains_url(&request.title);
+    let mut has_url = !request.images.is_empty() || contains_url(&request.title);
     if let Some(options) = &request.options {
         if !has_url {
             has_url = contains_url(options);
@@ -643,8 +727,8 @@ async fn resolve_query_with_same_question_check(
         );
         let check_prompt =
             build_same_question_check_prompt(&request.title, request.options.as_deref(), &candidates);
-        logger.send_model_call_request(request_id.to_string(), check_prompt.clone());
-        emit_model_call_request(app, request_id, &check_prompt);
+        logger.send_model_call_request(request_id.to_string(), check_prompt.clone(), None);
+        emit_model_call_request(app, request_id, &check_prompt, None);
 
         match logger
             .wait_for_model_response(request_id.to_string(), 30, 45)
@@ -981,6 +1065,7 @@ pub async fn start_server(
                     title: title.clone(),
                     options,
                     query_type,
+                    ..QueryRequest::default()
                 };
                 
                 let request_body = serde_json::to_string(&request).unwrap_or_default();
@@ -1612,6 +1697,31 @@ mod same_question_tests {
     use warp::Reply;
 
     #[test]
+    fn ocs_legacy_request_and_real_image_array() {
+        let legacy: QueryRequest = serde_json::from_str(r#"{"title":"旧 GET","options":"A. 1\nB. 2"}"#).unwrap();
+        assert!(legacy.images.is_empty());
+        let request: QueryRequest = serde_json::from_str(r#"{"title":"题目","images":["data:image/png;base64,xxx"],"suggestion_title":"[图片1]"}"#).unwrap();
+        assert!(serde_json::to_value(request).unwrap()["images"].is_array());
+    }
+
+    #[test]
+    fn ocs_image_answer_restores_original_options_before_validation() {
+        let request = QueryRequest {
+            title: "图 https://example.test/t.png".into(),
+            options: Some("A. f(https://example.test/a.png)\nB. https://example.test/b.png".into()),
+            query_type: Some("multiple".into()),
+            images: vec!["fixture".into(); 3],
+            suggestion_title: Some("图 [图片1]".into()),
+            suggestion_options: Some("A. f( [图片2] )\nB. [图片3]".into()),
+        };
+        let answer = super::restore_ocs_image_answer(&request, "[图片3]###f( [图片2] )").unwrap();
+        assert_eq!(super::validate_and_normalize_answer(&answer, &request.title, request.options.as_deref(), request.query_type.as_deref()).unwrap(),
+            "f(https://example.test/a.png)###https://example.test/b.png");
+        assert_eq!(super::restore_ocs_image_answer(&request, "[图片1]").unwrap(), "https://example.test/t.png");
+        assert!(super::restore_ocs_image_answer(&request, "[图片9]").is_err());
+    }
+
+    #[test]
     fn parses_same_true_with_matched_id() {
         assert_eq!(
             parse_same_question_result(r#"{"same":true,"matched_id":42}"#),
@@ -1649,6 +1759,7 @@ mod same_question_tests {
             title: "选择正确选项".to_string(),
             options: Some("A. 乙 B. 甲".to_string()),
             query_type: Some("单选题".to_string()),
+            ..QueryRequest::default()
         };
         let matched = QuestionMatch {
             id: 1,

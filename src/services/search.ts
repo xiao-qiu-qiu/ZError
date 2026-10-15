@@ -1,4 +1,4 @@
-import type { SearchSettings } from './settings'
+import type { SearchSettings } from './app/settings'
 import { BING_USER_AGENT, bingSearchUrl, directBingSearch, isBingSourceRelevant, parseBingRss } from './bingSearch'
 import { restrictedPageReason } from './searchGuidance'
 

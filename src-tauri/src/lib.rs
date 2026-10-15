@@ -4,6 +4,7 @@
 // 模块声明
 pub mod app_activity;
 mod answer_validation;
+pub mod app_browser;
 pub mod commands;
 mod search_http;
 pub mod database;
@@ -15,12 +16,13 @@ pub mod window_size;
 use crate::window_size::{resolve_window_size, MAIN_WINDOW_PRESET};
 pub use commands::open_text_window;
 pub use commands::{
-    can_native_updater_install, clear_request_logs, convert_doc_to_docx, create_directory,
+    can_native_updater_install, clear_macos_quarantine, clear_request_logs, convert_doc_to_docx, create_directory,
     fetch_image_as_base64, file_exists, get_daily_request_counts, get_request_logs, get_username,
-    greet, open_cache_dir, open_devtools, open_url_content_window, read_config, read_doc_range,
+    greet, load_cjk_system_font, open_cache_dir, open_devtools, open_url_content_window, read_config, read_doc_range,
+    reveal_in_file_manager,
     read_docx_range, read_excel_headers, read_excel_range, read_file_bytes, read_file_range,
-    read_file_text, read_model_config, request_admin_elevation, segment_text, write_config,
-    write_model_config
+    read_auth, read_file_text, read_model_config, request_admin_elevation, segment_text, stat_local_file,
+    write_auth, write_config, write_model_config
 };
 pub use database::*;
 pub use database::{
@@ -188,28 +190,31 @@ fn apply_windows_taskbar_icons(window: &tauri::WebviewWindow) {
 }
 
 fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let Some(window) = app
+        .get_webview("main")
+        .map(|webview| webview.window())
+    else {
+        return;
+    };
     #[cfg(target_os = "macos")]
     {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.show();
-            let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
-            let _ = window.set_focus();
-        }
+        let _ = window.show();
+        let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+        let _ = window.set_focus();
     }
     #[cfg(not(target_os = "macos"))]
     {
-        if let Some(window) = app.get_webview_window("main") {
-            if window.is_minimized().unwrap_or(false) {
-                let _ = window.unminimize();
-            }
-            let _ = window.show();
-            let _ = window.set_focus();
+        if window.is_minimized().unwrap_or(false) {
+            let _ = window.unminimize();
         }
+        let _ = window.show();
+        let _ = window.set_focus();
     }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    crate::app_activity::prefer_chinese_system_dialogs();
     #[cfg(target_os = "macos")]
     ensure_tmpdir_same_volume_as_exe();
 
@@ -241,7 +246,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             search_http::search_bing_direct,
             greet,
+            load_cjk_system_font,
             can_native_updater_install,
+            clear_macos_quarantine,
             create_directory,
             file_exists,
             get_username,
@@ -258,6 +265,7 @@ pub fn run() {
             request_admin_elevation,
             read_file_text,
             read_file_bytes,
+            stat_local_file,
             read_excel_headers,
             read_excel_range,
             read_docx_range,
@@ -269,7 +277,10 @@ pub fn run() {
             write_config,
             read_model_config,
             write_model_config,
+            read_auth,
+            write_auth,
             open_cache_dir,
+            reveal_in_file_manager,
             search_questions_fuzzy,
             get_folders,
             get_ai_responses,
@@ -280,6 +291,37 @@ pub fn run() {
             get_folder_question_count,
             get_folder_path,
             get_folder_stats,
+            get_question_metric_stats,
+            get_questions_by_ids,
+            add_practice_record,
+            update_practice_note,
+            get_practice_history,
+            get_practice_summaries,
+            get_recent_practice_marks,
+            get_question_practice_stats,
+            list_recent_wrong_questions,
+            list_study_subjects,
+            create_study_subject,
+            rename_study_subject,
+            delete_study_subject,
+            get_study_graph,
+            set_study_graph,
+            patch_study_graph,
+            apply_study_progress,
+            list_study_activity,
+            list_study_activity_between,
+            list_study_heatmap,
+            list_study_timeline_summaries,
+            get_study_timeline_summary_cursor,
+            list_unsummarized_study_activity,
+            insert_study_timeline_summary,
+            link_questions_to_node,
+            unlink_question_knowledge,
+            list_question_knowledge,
+            list_node_questions,
+            list_subject_questions,
+            merge_study_subjects,
+            split_study_subject,
             add_question,
             set_question_pending_correction,
             update_question,
@@ -291,7 +333,21 @@ pub fn run() {
             clear_folder_questions,
             delete_folder,
             rename_folder,
-            move_folder
+            move_folder,
+            crate::app_browser::browser_open,
+            crate::app_browser::browser_set_bounds,
+            crate::app_browser::browser_show,
+            crate::app_browser::browser_hide,
+            crate::app_browser::browser_hide_all,
+            crate::app_browser::browser_close,
+            crate::app_browser::browser_navigate,
+            crate::app_browser::browser_reload,
+            crate::app_browser::browser_go_back,
+            crate::app_browser::browser_go_forward,
+            crate::app_browser::browser_get_state,
+            crate::app_browser::browser_set_zoom,
+            crate::app_browser::browser_eval,
+            crate::app_browser::browser_set_app_above_page,
         ])
         .setup(|app| {
             // 初始化 ServerState 并注入 app_handle

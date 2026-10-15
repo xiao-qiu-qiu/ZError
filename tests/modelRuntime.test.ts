@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { runModel } from '../src/services/modelRuntime'
 import { SearchSession } from '../src/services/search'
-import { buildPresetProcessModelJsCode } from '../src/services/modelProtocol'
+import { buildPresetProcessModelJsCode } from '../src/services/model/protocol'
 
 const settings = { mode: 'always' as const, provider: 'searxng' as const, apiKey: '', baseUrl: 'https://search.example.org', maxSearches: 2, maxPages: 3, timeoutSeconds: 120, requestTimeoutSeconds: 20, cacheTtlMinutes: 0 }
 const signal = () => new AbortController().signal

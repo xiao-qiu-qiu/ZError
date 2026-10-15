@@ -14,12 +14,16 @@ pub struct ServerInfo {
 }
 
 /// 查询请求结构体
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct QueryRequest {
     pub title: String,
     pub options: Option<String>,
     #[serde(rename = "type")]
     pub query_type: Option<String>,
+    #[serde(default)]
+    pub images: Vec<String>,
+    pub suggestion_title: Option<String>,
+    pub suggestion_options: Option<String>,
 }
 
 /// 模型调用响应请求结构体

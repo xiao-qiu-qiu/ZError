@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { runModel } from '../src/services/modelRuntime'
 import { SearchSession, type SearchSource } from '../src/services/search'
-import type { SearchSettings } from '../src/services/settings'
+import type { SearchSettings } from '../src/services/app/settings'
 
 const baseSettings: SearchSettings = {
   mode: 'always',

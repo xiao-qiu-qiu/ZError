@@ -46,6 +46,7 @@ import { EditorView } from '@codemirror/view'
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
 import { json } from '@codemirror/lang-json'
 import { tags } from '@lezer/highlight'
+import { buildOcsConfig } from '../../utils/ocsConfig'
 
 interface Props {
   visible: boolean
@@ -60,24 +61,8 @@ const emit = defineEmits<{
 
 const copySuccess = ref(false)
 
-const ocsConfig = [{
-  "name": "ZE题库(自建版)",
-  "homepage": "http://app.zerror.cc",
-  "url": "http://localhost:3002/query",
-  "method": "get",
-  "type": "GM_xmlhttpRequest",
-  "contentType": "json",
-  "data": {
-    "title": "${title}",
-    "options": "${options}",
-    "type": "${type}"
-  },
-  "handler": "return (res)=>res.code === 0 ? [res.message, undefined] : [res.data.question,res.data.answer,{ai: res.data.is_ai}]"
-}]
-
 const formattedConfig = computed(() => {
-  const config = [{ ...ocsConfig[0], url: `http://localhost:${props.currentPort || 3000}/query` }]
-  return JSON.stringify(config, null, 2)
+  return JSON.stringify(buildOcsConfig(props.currentPort), null, 2)
 })
 
 const cmContainerRef = ref<HTMLElement | null>(null)

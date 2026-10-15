@@ -13,65 +13,36 @@
       </div>
       <div class="app-title">ZError</div>
     </div>
+    <button
+      v-if="showExpandChats"
+      class="expand-chats"
+      type="button"
+      title="展开对话列表"
+      @click="setChatListCollapsed(false)"
+    >
+      展开对话
+    </button>
     
-    <div class="header-center">
-      <div v-if="props.activeTab !== 'questions'" class="tutorial-stepper">
-        <div class="step" :class="{ completed: isStep1Completed, active: !isStep1Completed }" @click="$emit('guide-to', 'model-settings')">
-          <div class="step-indicator">
-            <svg v-if="isStep1Completed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            <span v-else>1</span>
-          </div>
-          <span class="step-text">配置 AI 模型</span>
-          <div class="step-tooltip">
-            <strong>步骤 1：配置 AI 模型</strong><br>
-            前往"设置 &gt; 模型设置"，选择一个 AI 平台并填写您的 API Key。<br>
-            <a data-v-f7451f5a="" href="https://docs.zerror.cc/get-apiKey" target="_blank" rel="noopener noreferrer" class="api-doc-link">如何获取Api Key?</a><br><br>
-            <strong>必须完成：</strong><br>
-            • 在填写 API Key 的平台下，至少选择<strong>一个文本模型</strong>。<br>
-            • （可选）还可以选择一个视觉和总结模型。
-          </div>
-        </div>
-        <div class="step-connector" :class="{ completed: isStep1Completed }"></div>
-        <div class="step" :class="{ completed: isStep1Completed && isStep2Completed, active: isStep1Completed && !isStep2Completed }" @click="$emit('guide-to', 'home')">
-          <div class="step-indicator">
-            <svg v-if="isStep1Completed && isStep2Completed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            <span v-else>2</span>
-          </div>
-          <span class="step-text">启动服务</span>
-          <div class="step-tooltip">
-            <strong>步骤 2：启动服务</strong><br>
-            在"首页"<br>启动本地服务器。
-          </div>
-        </div>
-        <div class="step-connector" :class="{ completed: isStep1Completed && isStep2Completed }"></div>
-        <div class="step" :class="{ completed: isStep1Completed && isStep2Completed && isStep3Completed, active: isStep1Completed && isStep2Completed && !isStep3Completed }" @click="$emit('guide-to', 'ocs-config')">
-          <div class="step-indicator">
-            <svg v-if="isStep1Completed && isStep2Completed && isStep3Completed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            <span v-else>3</span>
-          </div>
-          <span class="step-text">让OCS连接题库</span>
-          <div class="step-tooltip">
-            <strong>步骤 3：让OCS连接题库</strong><br>
-            在OCS题库配置中，配置题库
-          </div>
-        </div>
-      </div>
+    <div class="header-center" :class="{ 'is-browser-tabs': props.activeTab === 'browser' }">
+      <HeaderTutorialStepper
+        :active-tab="props.activeTab"
+        @guide-to="emit('guide-to', $event)"
+      />
+      <HeaderBrowserTabs :active-tab="props.activeTab" />
       <button
         v-if="props.activeTab === 'questions'"
         class="campus-entry"
         type="button"
         title="打开校园题库"
-        @click="openCampusBank"
+        @click="$emit('navigate', 'campus')"
       >
-        <svg t="1774676033971" class="campus-entry-icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="13992" aria-hidden="true">
-          <path d="M711.64369225 373.38084187m-146.83947615 0a146.83947615 146.83947615 0 1 0 293.67895229 0 146.83947615 146.83947615 0 1 0-293.67895229 0Z" fill="#FED16C" p-id="13993"></path>
-          <path d="M952.5443192 863.53186765H470.7301199c-34.3829365 0-62.25434548-27.87140898-62.25434548-62.25434548v-95.0449999c0-69.4260875 56.27357867-125.69966617 125.69966617-125.69966617h354.89766716c69.4260875 0 125.69966617 56.27357867 125.69966617 125.69966617v95.0449999c0.02589076 34.3829365-27.84551822 62.25434548-62.22845472 62.25434548z" fill="#FED16C" p-id="13994"></path>
-          <path d="M392.26815525 295.72149097m-185.01540977 0a185.01540978 185.01540978 0 1 0 370.03081955 0 185.01540978 185.01540978 0 1 0-370.03081955 0Z" fill="#F9A214" p-id="13995"></path>
-          <path d="M676.21217975 913.30686419H108.32413076c-54.13759052 0-98.02243792-43.88484741-98.02243793-98.02243792v-80.89569658c0-98.11305561 79.53643141-177.66243239 177.66243241-177.66243241h408.63395081c98.11305561 0 177.66243239 79.53643141 177.6624324 177.66243241v80.89569658c-0.01294539 54.12464514-43.8977928 98.02243792-98.0483287 98.02243792z" fill="#F9A214" p-id="13996"></path>
-          <path d="M392.28110064 381.12218075c-42.991616 0-81.49118419-22.21427675-102.9805195-59.45814283-8.18148187-14.14930331-3.32696336-32.24694835 10.82233995-40.40253945 14.09752178-8.20737264 32.24694835-3.35285413 40.40253944 10.82233995 10.82233995 18.70607803 30.16274173 29.86499792 51.75564011 29.86499793 21.59289837 0 40.93330015-11.1589199 51.71680395-29.86499793 8.20737264-14.17519408 26.26618153-18.97793106 40.42843023-10.84823072 14.14930331 8.18148187 19.00382183 26.27912691 10.84823071 40.42843022-21.50228069 37.21797531-59.9889035 59.45814282-102.96757412 59.45814283h-0.02589077z" fill="#FFFFFF" p-id="13997"></path>
+        <svg class="campus-entry-icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M309.312 384a32 32 0 0 1 32-32h128a32 32 0 1 1 0 64h-128a32 32 0 0 1-32-32zM309.312 554.688a32 32 0 0 1 32-32h128a32 32 0 1 1 0 64h-128a32 32 0 0 1-32-32z" fill="currentColor"/>
+          <path d="M568.704 147.776L351.04 84.48C303.488 70.784 264.32 59.392 232.832 55.168c-32.96-4.416-64.192-1.92-90.88 19.008-26.368 20.8-36.736 50.688-41.408 84.16C96 190.656 96 232.64 96 284.096v622.592h-10.688a32 32 0 0 0 0 64h853.376a32 32 0 1 0 0-64H928V615.808c0-28.992 0-53.504-2.304-73.536-2.496-21.184-7.872-40.64-20.928-58.176-12.992-17.472-30.08-28.224-49.728-36.672-18.432-8-41.92-15.04-69.76-23.36l-70.592-21.184v-56.192c0-30.72 0-56.512-2.368-77.44-2.56-22.144-8-42.24-21.12-60.352-13.312-18.112-30.784-29.184-51.008-37.76-18.944-8.128-43.008-15.104-71.488-23.36z m145.92 321.92l50.56 15.104c30.016 9.024 49.92 15.04 64.512 21.376 13.888 5.952 19.904 10.944 23.744 16.128 3.84 5.184 6.912 12.352 8.64 27.392 1.92 15.872 1.92 36.608 1.92 67.968v289.024h-149.312V469.696z m-64 436.992H544v-97.92c0-18.496 0-35.392-1.856-49.216-2.048-15.104-6.848-31.168-20.032-44.352-13.184-13.184-29.184-17.984-44.352-20.032a395.904 395.904 0 0 0-49.216-1.856H382.08c-18.432 0-35.392 0-49.152 1.92-15.168 1.984-31.232 6.784-44.416 19.968-13.184 13.184-17.92 29.248-20.032 44.352-1.792 13.824-1.792 30.72-1.792 49.216v97.92H160V286.592c0-54.528 0.064-92.032 3.904-119.424 3.776-26.688 10.24-36.864 17.664-42.688 7.04-5.568 17.536-9.216 42.752-5.888 26.112 3.52 60.672 13.44 111.36 28.16l213.376 61.952c30.72 8.96 51.072 14.848 66.048 21.248 14.08 6.016 20.288 11.136 24.32 16.768 4.224 5.696 7.424 13.568 9.28 29.696 1.92 16.896 1.92 39.04 1.92 72.128v558.08z m-170.624 0H330.688v-96c0-21.056 0-33.6 1.28-42.56a30.08 30.08 0 0 1 1.536-7.104l0.192-0.32v-0.128l0.064-0.128h0.128a30.592 30.592 0 0 1 7.552-1.792c8.96-1.28 21.568-1.28 42.56-1.28h42.688c20.992 0 33.536 0 42.56 1.28a30.592 30.592 0 0 1 7.552 1.728l0.128 0.192 0.064 0.128 0.128 0.32a30.016 30.016 0 0 1 1.6 7.04c1.216 9.024 1.28 21.568 1.28 42.624v96z" fill="currentColor"/>
         </svg>
         <span class="campus-entry-text">想将题库分享给同学？试试校园题库吧</span>
       </button>
+
     </div>
 
     <div class="header-right" :class="{ 'header-right--macos': isMacOS }">
@@ -118,6 +89,76 @@
         </button>
       </div>
 
+      <div
+        v-if="showStudyChip && linkedSubject"
+        class="study-status"
+        :class="{ 'is-evaluating': studyEvalRunning }"
+        data-tauri-drag-region-exclude
+      >
+        <div
+          class="study-status-main"
+          :title="studyEvalRunning
+            ? `正在评估 ${linkedSubject.name} 的学习效果`
+            : `正在学习 ${linkedSubject.name}，Agent 能看到掌握进度`"
+        >
+          <span class="study-status-kicker" :class="{ 'is-eval': studyEvalRunning }">
+            {{ studyEvalRunning ? '正在评估' : '正在学习' }}
+          </span>
+          <span class="study-status-name">{{ linkedSubject.name }}</span>
+          <span class="study-status-progress">{{ subjectProgress(linkedSubject) }}%</span>
+          <span class="study-status-bar" aria-hidden="true">
+            <span :style="{ width: `${subjectProgress(linkedSubject)}%`, background: barColor(linkedSubject.progress) }" />
+          </span>
+        </div>
+        <button
+          type="button"
+          class="study-status-graph"
+          title="展开知识图谱"
+          @click="expandStudyGraph(linkedSubject.id)"
+        >
+          <svg class="study-status-graph-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+            <path class="edge" d="M8.1 8.4 10.6 10.7M15.9 9.1 13.5 10.8M8.7 16.2 10.7 13.9M15.6 15.8 13.5 13.9" />
+            <circle class="node" cx="6.2" cy="6.8" r="2.35" />
+            <circle class="node" cx="17.8" cy="7.6" r="2.35" />
+            <circle class="node" cx="12" cy="12" r="2.55" />
+            <circle class="node" cx="7" cy="17.8" r="2.35" />
+            <circle class="node" cx="17.4" cy="17.4" r="2.35" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="user-entry" data-tauri-drag-region-exclude>
+        <button
+          class="user-chip"
+          type="button"
+          :title="isLoggedIn ? userDisplayName() : '登录校园账号'"
+          @click="onUserChipClick"
+        >
+          <img v-if="isLoggedIn && avatarSrc" class="user-avatar user-avatar-img" :src="avatarSrc" alt="" />
+          <span v-else class="user-avatar">
+            <svg class="user-avatar-icon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M512 447.223c-88.224 0-160-71.776-160-160s71.776-160 160-160c88.225 0 160 71.776 160 160s-71.775 160-160 160z m0-256c-52.935 0-96 43.065-96 96s43.065 96 96 96 96-43.065 96-96-43.065-96-96-96zM454.901 870.594c-96.594 0-184.933-3.802-231.263-49.955C203.308 800.386 193 774.164 193 742.701c0-31.629 10.247-62.812 30.457-92.686 17.978-26.573 42.908-50.741 74.098-71.833C359.256 536.46 437.418 512.53 512 512.53c74.55 0 152.55 23.943 214.002 65.691 31.05 21.094 55.861 45.273 73.746 71.867C819.822 679.937 830 711.096 830 742.701c0 31.552-10.317 57.827-30.664 78.097-50.714 50.521-151.822 50.128-258.88 49.723a7395.45 7395.45 0 0 0-56.914-0.001c-9.605 0.037-19.163 0.074-28.641 0.074zM512 806.447c9.567 0 19.149 0.037 28.701 0.073 49.52 0.191 96.284 0.37 135.808-4.396 38.418-4.633 64.546-13.604 77.659-26.668 5.079-5.06 11.832-13.96 11.832-32.755 0-38.089-27.688-78.744-75.963-111.54C638.933 596.442 574.04 576.53 512 576.53c-126.309 0-255 83.862-255 166.171 0 18.675 6.738 27.547 11.807 32.596 32.045 31.922 128.975 31.55 214.491 31.224 9.556-0.037 19.139-0.074 28.702-0.074z" fill="currentColor"/>
+            </svg>
+          </span>
+          <span class="user-chip-text">{{ isLoggedIn ? userDisplayName() : '登录' }}</span>
+        </button>
+        <div v-if="userMenuOpen && isLoggedIn" class="user-menu">
+          <div class="user-menu-name">{{ userDisplayName() }}</div>
+          <div v-if="authUser?.campus_name" class="user-menu-meta">{{ authUser.campus_name }}</div>
+          <div class="user-menu-divider" aria-hidden="true"></div>
+          <button class="user-menu-item" type="button" @click="pickAvatar">{{ avatarUploading ? '上传中…' : '更换头像' }}</button>
+          <button class="user-menu-item" type="button" @click="goCampus">校园题库</button>
+          <button class="user-menu-item is-danger" type="button" @click="handleLogout">退出登录</button>
+        </div>
+        <input
+          ref="avatarInput"
+          class="avatar-file-input"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          @change="onAvatarPicked"
+        />
+      </div>
+
       <template v-if="!isMacOS">
         <button
           class="window-control minimize"
@@ -160,13 +201,24 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, onUnmounted } from 'vue'
-import { useModelConfig } from '../services/modelConfig'
-import { serverRunning } from '../services/serverState'
-import { listen, UnlistenFn } from '@tauri-apps/api/event'
+import HeaderTutorialStepper from './appHeader/HeaderTutorialStepper.vue'
+import HeaderBrowserTabs from './appHeader/HeaderBrowserTabs.vue'
+import { activeChat, chatListCollapsed, setChatListCollapsed, studyEvalRunning } from '../services/agent/chat'
 import { useAppUpdate } from '../composables/useAppUpdate'
+import { useExclusiveMenu } from '../composables/useExclusiveMenu'
+import { databaseService, type StudySubject } from '../services/app/database'
+import { progressColor } from '../utils/study/studyGraph'
+import { authUser, isLoggedIn, logoutAuth, openLoginDialog, uploadAuthAvatar, userAvatarSrc, userDisplayName } from '../services/app/auth'
+
+const STUDY_STORAGE_KEY = 'zerror-study-subject'
 
 const props = defineProps<{
   activeTab?: string
+}>()
+
+const emit = defineEmits<{
+  'guide-to': [target: string]
+  navigate: [tab: string]
 }>()
 
 const {
@@ -192,67 +244,61 @@ const isMaximized = ref(false)
 const isTauri = ref(false)
 const isMacOS = ref(false)
 
-const { settings: modelSettings, platforms: computedPlatforms, selectedTextModels, selectedTextModel } = useModelConfig()
+const studySubjects = ref<StudySubject[]>([])
+const userMenuOpen = ref(false)
+const avatarInput = ref<HTMLInputElement | null>(null)
+const avatarUploading = ref(false)
+const avatarSrc = computed(() => userAvatarSrc())
+useExclusiveMenu('header-user-menu', userMenuOpen)
 
-// Tutorial Stepper Logic
-const isStep1Completed = computed(() => {
-  console.log('--- 开始计算 isStep1Completed ---')
-  if (!computedPlatforms.value || computedPlatforms.value.length === 0) {
-    console.log('computedPlatforms 为空')
-    return false;
-  }
-  
-  // 获取当前选中的所有文本模型ID（兼容不同的配置方式）
-  let selectedTextModelIds = new Set<string>();
-  if (selectedTextModels.value && selectedTextModels.value.length > 0) {
-    // selectedTextModels.value 是 AIModel 数组，取 id
-    selectedTextModels.value.forEach(m => selectedTextModelIds.add(m.id));
-  } else if (selectedTextModel.value) {
-    selectedTextModelIds.add(selectedTextModel.value.id);
-  }
-  
-  console.log('当前选中的文本模型 IDs:', Array.from(selectedTextModelIds));
-  
-  // 找到所有配置了有效 apiKey 的平台
-  const configuredPlatforms = computedPlatforms.value.filter(p => p.apiKey && p.apiKey.trim() !== '');
-  console.log('已配置 apiKey 的平台:', configuredPlatforms.map(p => p.id));
-  
-  // 判断：在这些配置了 apiKey 的平台中，是否至少有一个平台，其拥有的某个文本模型正处于被选中状态
-  const isCompleted = configuredPlatforms.some(platform => {
-    const hasSelectedTextModel = platform.models?.some(model => {
-      const isSelected = model.category === 'text' && selectedTextModelIds.has(model.id);
-      if (isSelected) {
-        console.log(`找到符合条件的文本模型：${model.id} (属于平台: ${platform.id})`);
-      }
-      return isSelected;
-    });
-    return hasSelectedTextModel;
-  });
-
-  console.log('步骤1 最终计算结果:', isCompleted);
-  console.log('--- 结束计算 ---')
-  return isCompleted;
+const showStudyChip = computed(() => {
+  const tab = props.activeTab || ''
+  return tab === 'agent' || tab === 'import-tasks'
 })
 
-const isStep2Completed = computed(() => {
-  return serverRunning.value
+const showExpandChats = computed(() => showStudyChip.value && chatListCollapsed.value)
+
+const linkedSubject = computed(() => {
+  const id = Number(activeChat.value?.studySubjectId)
+  if (!Number.isFinite(id) || id <= 0) return null
+  return studySubjects.value.find((item) => item.id === id) || null
 })
 
-// OCS Config step check (listen to HEAD request event from backend)
-const isStep3Completed = ref(false)
-let unlistenHeadEvent: UnlistenFn | null = null;
+const subjectProgress = (subject: StudySubject) => Math.round((Number(subject.progress) || 0) * 100)
+const barColor = (progress: number) => progressColor(progress)
 
-onMounted(async () => {
-  unlistenHeadEvent = await listen('ocs-head-received', () => {
-    console.log('--- 接收到来自后端的 OCS HEAD 请求事件，步骤 3 已完成 ---');
-    isStep3Completed.value = true;
-  });
+const loadStudySubjects = async () => {
+  try {
+    studySubjects.value = await databaseService.listStudySubjects()
+  } catch {
+    studySubjects.value = []
+  }
+}
+
+const openStudyGraphPane = (id: number) => {
+  localStorage.setItem(STUDY_STORAGE_KEY, String(id))
+  window.dispatchEvent(new CustomEvent('open-study-graph', { detail: { subjectId: id, expand: true } }))
+}
+
+const expandStudyGraph = (id: number) => {
+  openStudyGraphPane(id)
+}
+
+const closeUserMenu = (event: Event) => {
+  const target = event.target as HTMLElement | null
+  if (target?.closest('.user-entry')) return
+  userMenuOpen.value = false
+}
+
+onMounted(() => {
+  void loadStudySubjects()
+  window.addEventListener('study-graph-updated', loadStudySubjects)
+  document.addEventListener('mousedown', closeUserMenu, true)
 })
 
 onUnmounted(() => {
-  if (unlistenHeadEvent) {
-    unlistenHeadEvent();
-  }
+  window.removeEventListener('study-graph-updated', loadStudySubjects)
+  document.removeEventListener('mousedown', closeUserMenu, true)
 })
 
 const minimizeWindow = async () => {
@@ -321,21 +367,51 @@ const closeWindow = async () => {
   }
 }
 
-const openCampusBank = async () => {
-  const url = 'https://tiku.zerror.cc/campus'
-
-  try {
-    if (isTauri.value) {
-      const { openUrl } = await import('@tauri-apps/plugin-opener')
-      await openUrl(url)
-      return
-    }
-
-    window.open(url, '_blank', 'noopener,noreferrer')
-  } catch (error) {
-    console.error('打开校园题库失败:', error)
-    window.open(url, '_blank', 'noopener,noreferrer')
+const onUserChipClick = () => {
+  if (!isLoggedIn.value) {
+    openLoginDialog()
+    return
   }
+  userMenuOpen.value = !userMenuOpen.value
+}
+
+const goCampus = () => {
+  userMenuOpen.value = false
+  emit('navigate', 'campus')
+}
+
+const pickAvatar = () => {
+  if (avatarUploading.value) return
+  avatarInput.value?.click()
+}
+
+const onAvatarPicked = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    window.alert('请选择 JPG、PNG 或 WebP 图片')
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    window.alert('图片不能超过 5MB')
+    return
+  }
+  avatarUploading.value = true
+  try {
+    await uploadAuthAvatar(file)
+    userMenuOpen.value = false
+  } catch (error) {
+    window.alert(error instanceof Error ? error.message : '上传头像失败')
+  } finally {
+    avatarUploading.value = false
+  }
+}
+
+const handleLogout = async () => {
+  userMenuOpen.value = false
+  await logoutAuth()
 }
 
 // 检测是否在Tauri环境中运行
@@ -395,6 +471,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   height: 40px;
+  overflow: visible;
   background: var(--bg-primary, #f4f4f4);
   color: var(--text-primary, #2d3748);
   user-select: none;
@@ -450,7 +527,43 @@ onMounted(async () => {
   justify-content: right;
   align-items: center;
   min-width: 0;
+  overflow: visible;
   pointer-events: none;
+}
+
+.header-center.is-browser-tabs {
+  justify-content: flex-start;
+}
+
+.expand-chats {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 26px;
+  margin-left: 4px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--text-secondary, #718096) 18%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-primary, #fff) 78%, transparent);
+  color: var(--text-primary, #2d3748);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+.app-header.macos-header .expand-chats {
+  margin-left: 0;
+}
+
+.expand-chats:hover {
+  background: color-mix(in srgb, var(--color-primary, #667eea) 10%, var(--bg-primary, #fff));
+  border-color: color-mix(in srgb, var(--color-primary, #667eea) 36%, var(--border-color, #e2e8f0));
+}
+
+.expand-chats:active {
+  transform: scale(0.98);
 }
 
 .campus-entry {
@@ -463,7 +576,7 @@ onMounted(async () => {
   outline: none;
   background: transparent;
   box-shadow: none;
-  color: var(--text-primary, #2d3748);
+  color: var(--text-secondary, #718096);
   cursor: pointer;
   transition: color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
   -webkit-app-region: no-drag;
@@ -471,7 +584,7 @@ onMounted(async () => {
 }
 
 .campus-entry:hover {
-  color: color-mix(in srgb, var(--text-primary, #2d3748) 75%, #f9a214);
+  color: var(--text-primary, #2d3748);
 }
 
 .campus-entry:active {
@@ -480,18 +593,13 @@ onMounted(async () => {
 
 .campus-entry:focus-visible {
   border-radius: 999px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, #f9a214 45%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-secondary, #718096) 45%, transparent);
 }
 
 .campus-entry-icon {
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
-  filter: drop-shadow(0 0 4px rgba(249, 162, 20, 0.55)) drop-shadow(0 0 10px rgba(254, 209, 108, 0.35));
-}
-
-.campus-entry:hover .campus-entry-icon {
-  filter: drop-shadow(0 0 6px rgba(249, 162, 20, 0.7)) drop-shadow(0 0 14px rgba(254, 209, 108, 0.45));
 }
 
 .campus-entry-text {
@@ -502,6 +610,147 @@ onMounted(async () => {
   text-overflow: ellipsis;
 }
 
+.study-status {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  height: 26px;
+  margin-right: 4px;
+  padding: 0 4px 0 8px;
+  overflow: visible;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text-secondary, #718096) 18%, transparent);
+  background: color-mix(in srgb, var(--bg-primary, #fff) 78%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  -webkit-app-region: no-drag;
+}
+
+.study-status-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary, #2d3748);
+}
+
+.study-status-kicker {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-secondary, #718096);
+  line-height: 1;
+}
+
+.study-status-kicker.is-eval {
+  color: var(--color-primary, #2563eb);
+  animation: study-eval-pulse 1.15s ease-in-out infinite;
+}
+
+.study-status.is-evaluating {
+  border-color: color-mix(in srgb, var(--color-primary, #2563eb) 28%, transparent);
+}
+
+@keyframes study-eval-pulse {
+  0%, 100% { opacity: 0.38; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .study-status-kicker.is-eval {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+.study-status-name {
+  max-width: 96px;
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.study-status-progress {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary, #718096);
+  line-height: 1;
+}
+
+.study-status-bar {
+  width: 28px;
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-secondary, #718096) 16%, transparent);
+  overflow: hidden;
+}
+
+.study-status-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.study-status-idle {
+  font-size: 12px;
+  color: var(--text-secondary, #718096);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.study-status-graph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  margin-left: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  overflow: visible;
+}
+
+.study-status-graph-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  overflow: visible;
+}
+
+.study-status-graph-icon .edge {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+
+.study-status-graph-icon .node {
+  fill: currentColor;
+  stroke: none;
+}
+
+.study-status-graph:hover {
+  color: var(--text-primary, #2d3748);
+  background: color-mix(in srgb, var(--text-primary, #2d3748) 6%, transparent);
+}
+
+.study-status-graph:active {
+  transform: scale(0.94);
+}
+
 .header-right {
   display: flex;
   align-items: center;
@@ -510,6 +759,163 @@ onMounted(async () => {
   padding-right: 4px;
   -webkit-app-region: no-drag;
   pointer-events: auto;
+}
+
+.user-entry {
+  position: relative;
+  margin-left: 6px;
+  margin-right: 2px;
+  flex: 0 0 auto;
+  -webkit-app-region: no-drag;
+}
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 148px;
+  height: 26px;
+  padding: 0 8px 0 3px;
+  border: 1px solid color-mix(in srgb, var(--border-primary, #d2d2d7) 72%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-secondary, #fff) 82%, transparent);
+  color: var(--text-primary, #2d3748);
+  cursor: pointer;
+}
+
+.user-chip:hover {
+  background: color-mix(in srgb, var(--text-primary, #2d3748) 6%, var(--bg-secondary, #fff));
+}
+
+.user-chip:active {
+  transform: scale(0.97);
+}
+
+.user-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, #f5b942 22%, var(--bg-secondary, #fff));
+  color: #8a5a00;
+  font-size: 11px;
+  font-weight: 650;
+  flex: 0 0 auto;
+}
+
+.user-avatar-img {
+  object-fit: cover;
+  background: color-mix(in srgb, var(--text-primary, #2d3748) 8%, transparent);
+}
+
+.user-avatar-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.avatar-file-input {
+  display: none;
+}
+
+.user-chip-text {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: 180px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border-primary, #e2e8f0) 80%, transparent);
+  background: color-mix(in srgb, var(--bg-secondary, #fff) 94%, transparent);
+  box-shadow: 0 10px 28px color-mix(in srgb, #000 12%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+}
+
+.user-menu-name {
+  padding: 4px 8px 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #2d3748);
+}
+
+.user-menu-meta,
+.user-menu-item {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--text-secondary, #718096);
+}
+
+.user-menu-divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: color-mix(in srgb, var(--border-primary, #e2e8f0) 80%, transparent);
+}
+
+.user-menu-item {
+  width: 100%;
+  display: block;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.user-menu-item:hover {
+  color: var(--text-primary, #2d3748);
+  background: color-mix(in srgb, var(--text-primary, #2d3748) 6%, transparent);
+}
+
+.user-menu-item.is-danger {
+  color: var(--color-error, #ff3b30);
+}
+
+.user-menu-item.is-danger:hover {
+  color: var(--color-error, #ff3b30);
+  background: color-mix(in srgb, var(--color-error, #ff3b30) 10%, transparent);
+}
+
+[data-theme="dark"] .user-chip {
+  border-color: color-mix(in srgb, var(--border-primary, #3d3d3f) 88%, transparent);
+  background: color-mix(in srgb, var(--bg-tertiary, #3a3a3c) 82%, transparent);
+}
+
+[data-theme="dark"] .user-chip:hover {
+  background: color-mix(in srgb, var(--bg-tertiary, #3a3a3c) 96%, transparent);
+}
+
+[data-theme="dark"] .user-avatar {
+  background: color-mix(in srgb, #f5d08a 20%, var(--bg-tertiary, #3a3a3c));
+  color: #f0c674;
+}
+
+[data-theme="dark"] .user-menu {
+  border-color: color-mix(in srgb, var(--border-primary, #3d3d3f) 90%, transparent);
+  background: color-mix(in srgb, var(--bg-tertiary, #3a3a3c) 88%, var(--bg-secondary, #2c2c2e));
+  box-shadow:
+    0 1px 2px color-mix(in srgb, #000 28%, transparent),
+    0 12px 32px color-mix(in srgb, #000 42%, transparent);
+}
+
+[data-theme="dark"] .user-menu-item:hover {
+  background: color-mix(in srgb, var(--text-primary, #f5f5f7) 8%, transparent);
+}
+
+[data-theme="dark"] .user-menu-item.is-danger:hover {
+  background: color-mix(in srgb, var(--color-error, #ff453a) 14%, transparent);
 }
 
 .header-right--macos {
@@ -689,198 +1095,4 @@ onMounted(async () => {
   }
 }
 
-/* Tutorial Stepper Styles */
-.tutorial-stepper {
-  /* --- Stepper CSS Variables (Restored original colors) --- */
-  --stepper-text-primary: var(--text-primary);
-  --stepper-text-secondary: var(--text-secondary);
-  --stepper-border: transparent;
-  --stepper-active-bg: transparent;
-  --stepper-active-text: var(--color-primary, #667eea);
-  --stepper-completed-bg: #48bb78;
-  --stepper-tooltip-bg: rgba(255, 255, 255, 0.45);
-  --stepper-tooltip-border: rgba(194, 194, 194, 0.6);
-  --stepper-tooltip-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-  --stepper-pulse-start: rgba(102, 126, 234, 0.5);
-  --stepper-pulse-end: rgba(102, 126, 234, 0);
-  --stepper-link-color: #ff9800;
-  --stepper-link-hover: #e65100;
-  --stepper-connector-bg: var(--border-color);
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  pointer-events: auto;
-  margin: 0 auto;
-  padding: 2px 12px;
-  border-radius: 16px;
-}
-
-[data-theme='dark'] .tutorial-stepper {
-  /* --- Stepper CSS Variables (Restored original colors) --- */
-  --stepper-text-primary: var(--text-primary);
-  --stepper-text-secondary: var(--text-secondary);
-  --stepper-border: transparent;
-  --stepper-active-bg: transparent;
-  --stepper-active-text: var(--color-primary, #667eea);
-  --stepper-completed-bg: #48bb78;
-  --stepper-tooltip-bg: rgba(30, 30, 30, 0.45);
-  --stepper-tooltip-border: rgba(80, 80, 80, 0.6);
-  --stepper-tooltip-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-  --stepper-pulse-start: rgba(102, 126, 234, 0.5);
-  --stepper-pulse-end: rgba(102, 126, 234, 0);
-  --stepper-link-color: #ff9800;
-  --stepper-link-hover: #e65100;
-  --stepper-connector-bg: #656565;
-}
-
-.step {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--stepper-text-secondary);
-  transition: all 0.3s ease;
-  cursor: help;
-}
-
-.step:not(.active):not(.completed) .step-indicator,
-.step:not(.active):not(.completed) .step-text {
-  opacity: 0.5;
-}
-
-@keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 var(--stepper-pulse-start); }
-  70% { box-shadow: 0 0 0 5px var(--stepper-pulse-end); }
-  100% { box-shadow: 0 0 0 0 var(--stepper-pulse-end); }
-}
-
-.step.active {
-  background: var(--stepper-active-bg);
-  padding: 3px 8px;
-  border-radius: 12px;
-}
-
-.step.completed {
-  /* opacity: 0.8; */
-}
-
-.step-indicator {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--stepper-border);
-  color: var(--stepper-text-secondary);
-  font-size: 10px;
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
-.step.active .step-indicator {
-  background: var(--stepper-active-text);
-  color: white;
-  animation: pulse-ring 2s infinite;
-}
-
-.step.completed .step-indicator {
-  background: var(--stepper-completed-bg);
-  color: white;
-}
-
-.step-text {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--stepper-text-primary);
-  white-space: nowrap;
-}
-
-.step.active .step-text {
-  color: var(--stepper-active-text);
-}
-
-.step-tooltip {
-  position: absolute;
-  top: 130%;
-  left: 50%;
-  transform: translateX(-50%) translateY(10px);
-  background: var(--stepper-tooltip-bg);
-  backdrop-filter: blur(20px) saturate(120%);
-  -webkit-backdrop-filter: blur(20px) saturate(120%);
-  border: 1px solid var(--stepper-tooltip-border);
-  box-shadow: var(--stepper-tooltip-shadow);
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 12px;
-  color: var(--stepper-text-primary);
-  white-space: nowrap;
-  opacity: 0;
-  visibility: hidden;
-  transition: all 0.2s ease;
-  z-index: 100;
-  line-height: 1.6;
-  text-align: left;
-}
-
-.step-tooltip::before {
-  content: '';
-  position: absolute;
-  top: -5px;
-  left: 50%;
-  transform: translateX(-50%) rotate(45deg);
-  width: 8px;
-  height: 8px;
-  background: var(--stepper-tooltip-bg);
-  backdrop-filter: blur(20px) saturate(120%);
-  -webkit-backdrop-filter: blur(20px) saturate(120%);
-  border-left: 1px solid var(--stepper-tooltip-border);
-  border-top: 1px solid var(--stepper-tooltip-border);
-}
-
-.step-tooltip strong {
-  font-size: 13px;
-  color: var(--stepper-active-text);
-}
-
-.api-doc-link {
-  color: var(--stepper-link-color);
-  text-decoration: underline;
-  margin-top: 4px;
-  display: inline-block;
-  font-weight: 500;
-}
-
-.api-doc-link:hover {
-  color: var(--stepper-link-hover);
-}
-
-.step:hover .step-tooltip {
-  opacity: 1;
-  visibility: visible;
-  transform: translateX(-50%) translateY(0);
-}
-
-.step-connector {
-  width: 20px;
-  height: 2px;
-  background: var(--stepper-connector-bg);
-  border-radius: 1px;
-  transition: background 0.3s ease;
-}
-
-.step-connector.completed {
-  background: var(--stepper-completed-bg);
-}
-
-@media (max-width: 768px) {
-  .step-text {
-    display: none;
-  }
-  .step-connector {
-    width: 12px;
-  }
-}
 </style>

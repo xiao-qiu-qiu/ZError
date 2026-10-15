@@ -51,3 +51,7 @@ output/playwright/
 # Tauri updater private signing key (never commit)
 src-tauri/keys/*.key
 !src-tauri/keys/*.key.pub
+
+# 本地拷来的 Markstream 技能，不进仓库
+.agents/skills/markstream-*/
+skills-lock.json

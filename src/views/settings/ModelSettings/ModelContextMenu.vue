@@ -12,9 +12,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import UnifiedContextMenu, { type MenuItem } from '../../../components/UnifiedContextMenu.vue'
-import type { AIModel } from '../../../services/modelConfig'
-import { isVisionEnabled } from '../../../services/modelCapabilities'
+import UnifiedContextMenu, { type MenuItem } from '../../../components/ui/UnifiedContextMenu.vue'
+import type { AIModel } from '../../../services/model/config'
+import { modelHasVision } from '../../../services/model/config'
 
 interface Props {
   visible: boolean
@@ -52,7 +52,7 @@ const menuItems = computed<MenuItem[]>(() => {
   })
   items.push({ type: 'divider' })
 
-  const isVision = isVisionEnabled(props.model)
+  const isVision = modelHasVision(props.model)
 
   if (isVision) {
     items.push({
